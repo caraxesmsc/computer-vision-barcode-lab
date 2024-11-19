@@ -19,13 +19,12 @@ if not input_image_path:
 def display_summary(images, titles):
     plt.figure(figsize=(15, 10))
     for i, (img, title) in enumerate(zip(images, titles)):
-        plt.subplot(3, 3, i + 1)  # Change 2, 4 to 3, 3 for a 3x3 grid
+        plt.subplot(3, 4, i + 1)
         plt.imshow(img, cmap='gray' if len(img.shape) == 2 else None)
         plt.title(title)
         plt.axis('off')
     plt.tight_layout()
     plt.show()
-
 
 # Perspective correction with debug
 def perspective_correction_with_debug(image):
@@ -104,6 +103,24 @@ def perspective_correction_with_debug(image):
 
     return warped, edges, debug_image
 
+# Refinement process
+def refine_binary_image(binary_image):
+    # Morphological opening to remove small noise
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    opened = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, kernel_open)
+    
+    # Skeletonization to thin the barcode lines
+    skeleton = cv2.ximgproc.thinning(opened, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
+    
+    # Contour filtering to remove small, irrelevant noise
+    contours, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filtered_binary = np.zeros_like(skeleton)
+    for contour in contours:
+        if cv2.contourArea(contour) > 50:  # Threshold for minimum contour area
+            cv2.drawContours(filtered_binary, [contour], -1, 255, thickness=cv2.FILLED)
+    
+    return opened, skeleton, filtered_binary
+
 # Load the image
 image = cv2.imread(input_image_path)
 
@@ -117,39 +134,25 @@ original_image = image.copy()
 processed_image, edges, debug_image = perspective_correction_with_debug(image)
 
 # Step 2: Convert to grayscale and continue processing
-# Post-processing after perspective correction with improved noise removal
-def post_process_barcode(image):
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced_gray = clahe.apply(gray)
-    
-    # Apply Gaussian Blur for noise reduction
-    blurred = cv2.GaussianBlur(enhanced_gray, (5, 5), 0)
-    
-    # Adaptive Thresholding for dynamic binarization
-    adaptive_binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                            cv2.THRESH_BINARY, 11, 2)
-    
-    # Morphological operations to clean up the binary image
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    morphed = cv2.morphologyEx(adaptive_binary, cv2.MORPH_CLOSE, kernel)
-    
-    # Additional erosion and dilation for further cleanup
-    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    cleaned_binary = cv2.dilate(morphed, kernel2, iterations=1)
-    cleaned_binary = cv2.erode(cleaned_binary, kernel2, iterations=1)
-    
-    return gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary
+gray = cv2.cvtColor(processed_image, cv2.COLOR_BGR2GRAY)
 
+# Step 3: Apply CLAHE and adaptive thresholding
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+enhanced_gray = clahe.apply(gray)
+blurred = cv2.GaussianBlur(enhanced_gray, (5, 5), 0)
+adaptive_binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        cv2.THRESH_BINARY, 11, 2)
 
-# Process the corrected image
-gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary = post_process_barcode(processed_image)
+# Step 4: Refine the binary image
+opened, skeleton, filtered_binary = refine_binary_image(adaptive_binary)
 
-# Display all steps including the improved post-processing
-steps = [original_image, edges, debug_image, processed_image, gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary]
-titles = ["Original Image", "Edges Detected", "Debug Contour", "Processed Image",
-          "Grayscale", "Enhanced Contrast", "Blurred", "Adaptive Threshold", "Cleaned Binary"]
+# Display all steps in a grid
+steps = [
+    original_image, edges, debug_image, processed_image, gray,
+    enhanced_gray, blurred, adaptive_binary, opened, skeleton, filtered_binary
+]
+titles = [
+    "Original Image", "Edges Detected", "Debug Contour", "Processed Image", "Grayscale",
+    "Enhanced Contrast", "Blurred", "Adaptive Threshold", "Opened", "Skeletonized", "Filtered Binary"
+]
 display_summary(steps, titles)
