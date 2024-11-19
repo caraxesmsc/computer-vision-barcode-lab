@@ -80,28 +80,25 @@ def correct_perspective(image):
     matrix = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
     return warped
-
 def refine_binary(binary_image):
-    """Refine binary image using balanced morphological operations."""
+    """Simplify refined binary to clean without over-eroding."""
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
-    # Perform closing to fill small gaps
+    # Close small gaps in barcode lines
     closed = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel_close)
 
-    # Perform opening to remove noise
-    refined = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
+    # Remove small noise outside barcode
+    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
 
-    return refined
+    return opened
 
 
 def crop_barcode_area(thresholded_image, original_image):
-    """Crop the barcode area based on vertical and horizontal projections."""
-    # Calculate vertical and horizontal projections
+    """Crop the barcode area using vertical and horizontal density projections."""
     vertical_projection = np.sum(thresholded_image == 0, axis=0)
     horizontal_projection = np.sum(thresholded_image == 0, axis=1)
 
-    # Detect regions with significant density
     vertical_threshold = 0.6 * np.max(vertical_projection)
     horizontal_threshold = 0.6 * np.max(horizontal_projection)
 
@@ -112,7 +109,6 @@ def crop_barcode_area(thresholded_image, original_image):
         print("Barcode region not detected.")
         return original_image
 
-    # Define bounding box with padding
     x_start, x_end = vertical_indices[0], vertical_indices[-1]
     y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
 
@@ -145,11 +141,11 @@ if __name__ == "__main__":
         gaussian_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
     )
 
-    # Use adaptive binary for cropping
-    cropped_barcode = crop_barcode_area(adaptive_binary, perspective_corrected)
-
-    # If refined binary is needed, refine binary after cropping
+    # Simplified refinement
     refined_binary = refine_binary(adaptive_binary)
+
+    # Use adaptive binary directly for cropping
+    cropped_barcode = crop_barcode_area(adaptive_binary, perspective_corrected)
 
     # Display results
     steps = [
