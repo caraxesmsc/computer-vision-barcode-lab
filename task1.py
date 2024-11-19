@@ -80,8 +80,10 @@ def correct_perspective(image):
     matrix = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
     return warped
+
+
 def refine_binary(binary_image):
-    """Simplify refined binary to clean without over-eroding."""
+    """Refine binary image using morphological operations."""
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
@@ -94,10 +96,10 @@ def refine_binary(binary_image):
     return opened
 
 
-def crop_barcode_area(thresholded_image, original_image):
+def crop_barcode_area(preprocessed_image, original_image):
     """Crop the barcode area using vertical and horizontal density projections."""
-    vertical_projection = np.sum(thresholded_image == 0, axis=0)
-    horizontal_projection = np.sum(thresholded_image == 0, axis=1)
+    vertical_projection = np.sum(preprocessed_image == 0, axis=0)
+    horizontal_projection = np.sum(preprocessed_image == 0, axis=1)
 
     vertical_threshold = 0.6 * np.max(vertical_projection)
     horizontal_threshold = 0.6 * np.max(horizontal_projection)
@@ -113,9 +115,9 @@ def crop_barcode_area(thresholded_image, original_image):
     y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
 
     x_start = max(0, x_start - 10)
-    x_end = min(x_end + 10, thresholded_image.shape[1])
+    x_end = min(x_end + 10, preprocessed_image.shape[1])
     y_start = max(0, y_start - 10)
-    y_end = min(y_end + 10, thresholded_image.shape[0])
+    y_end = min(y_end + 10, preprocessed_image.shape[0])
 
     cropped = original_image[y_start:y_end, x_start:x_end]
     return cropped
@@ -137,15 +139,14 @@ if __name__ == "__main__":
     median_5 = cv2.medianBlur(median_3, 5)
     gaussian_blur = cv2.GaussianBlur(median_5, (3, 3), 0)
 
-    adaptive_binary = cv2.adaptiveThreshold(
-        gaussian_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
+    # Use Gaussian blur as the base for cropping
+    binary = cv2.threshold(gaussian_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
     # Simplified refinement
-    refined_binary = refine_binary(adaptive_binary)
+    refined_binary = refine_binary(binary)
 
-    # Use adaptive binary directly for cropping
-    cropped_barcode = crop_barcode_area(adaptive_binary, perspective_corrected)
+    # Crop barcode area based on Gaussian blurred image
+    cropped_barcode = crop_barcode_area(gaussian_blur, refined_binary)
 
     # Display results
     steps = [
@@ -155,7 +156,7 @@ if __name__ == "__main__":
         median_3,
         median_5,
         gaussian_blur,
-        adaptive_binary,
+        binary,
         refined_binary,
         cropped_barcode,
     ]
@@ -166,7 +167,7 @@ if __name__ == "__main__":
         "Median 3x3",
         "Median 5x5",
         "Gaussian 3x3",
-        "Adaptive Binary",
+        "Binary (Otsu)",
         "Refined Binary",
         "Cropped Barcode",
     ]
