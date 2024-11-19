@@ -1,10 +1,19 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from tkinter import filedialog
+import tkinter as tk
 
-# Function to save each step as an image
-def save_step(image, step_name):
-    cv2.imwrite(f"{step_name.replace(' ', '_').lower()}.png", image)
+# Initialize Tkinter for image selection
+tk.Tk().withdraw()
+
+# Step 0: Select an image
+input_image_path = filedialog.askopenfilename(title="Select a Barcode Image",
+                                              filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+
+if not input_image_path:
+    print("No file selected. Exiting...")
+    exit()
 
 # Function to display all steps in a summary grid
 def display_summary(images, titles):
@@ -40,12 +49,25 @@ def perspective_correction(image):
 
         # Check if it’s a quadrilateral
         if len(approx) == 4:
-            paper_contour = approx
-            break
+            # Check aspect ratio
+            x, y, w, h = cv2.boundingRect(approx)
+            aspect_ratio = w / float(h)
+            if 0.5 < aspect_ratio < 2.0:  # Ensure it's roughly rectangular
+                paper_contour = approx
+                break
 
     if paper_contour is None:
         print("No valid paper contour found.")
         return image, edges
+
+    # Visualize the detected contour using matplotlib
+    debug_image = image.copy()
+    cv2.drawContours(debug_image, [paper_contour], -1, (0, 255, 0), 2)
+    plt.figure(figsize=(8, 6))
+    plt.imshow(cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB))
+    plt.title("Detected Contour")
+    plt.axis("off")
+    plt.show()
 
     # Order points in a consistent manner (top-left, top-right, bottom-right, bottom-left)
     pts = paper_contour.reshape(4, 2)
@@ -83,7 +105,6 @@ def perspective_correction(image):
     return warped, edges
 
 # Load the image
-input_image_path = "mnt/data/image3.jpg"  # Update this to the correct path
 image = cv2.imread(input_image_path)
 
 if image is None:
@@ -107,14 +128,6 @@ _, binary = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)
 # Step 5: Clean the binary image
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-# Save and display results
-save_step(edges, "Edges Detected")
-save_step(processed_image, "Processed Image")
-save_step(gray, "Grayscale")
-save_step(blurred, "Blurred Image")
-save_step(binary, "Binary Image")
-save_step(cleaned, "Cleaned Binary Image")
 
 # Display all steps in a grid
 steps = [original_image, edges, processed_image, gray, blurred, binary, cleaned]
