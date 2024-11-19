@@ -4,10 +4,8 @@ import matplotlib.pyplot as plt
 from tkinter import filedialog
 import tkinter as tk
 
-
 def hide_tkinter_window():
     tk.Tk().withdraw()
-
 
 def load_image():
     hide_tkinter_window()
@@ -23,24 +21,21 @@ def load_image():
         return None
     return image
 
-
 def display_summary(images, titles):
-    fig, axes = plt.subplots(2, 5, figsize=(20, 8))
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
     for i, (image, title) in enumerate(zip(images, titles)):
-        ax = axes[i // 5, i % 5]
+        ax = axes[i // 4, i % 4]
         ax.imshow(image, cmap="gray" if len(image.shape) == 2 else None)
         ax.set_title(title)
         ax.axis("off")
     plt.tight_layout()
     plt.show()
 
-
 def correct_perspective(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
-    )
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    blurred = cv2.medianBlur(gray, 5)
+    edged = cv2.Canny(blurred, 50, 150)
+    contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         print("No contours detected.")
         return image
@@ -69,35 +64,21 @@ def correct_perspective(image):
     max_height = max(int(height_a), int(height_b))
 
     dst = np.array(
-        [
-            [0, 0],
-            [max_width - 1, 0],
-            [max_width - 1, max_height - 1],
-            [0, max_height - 1],
-        ],
+        [[0, 0], [max_width - 1, 0], [max_width - 1, max_height - 1], [0, max_height - 1]],
         dtype="float32",
     )
     matrix = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
     return warped
 
-
 def refine_binary(binary_image):
-    """Refine binary image using morphological operations."""
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-
-    # Close small gaps in barcode lines
     closed = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel_close)
-
-    # Remove small noise outside barcode
     opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
-
     return opened
 
-
 def crop_barcode_area(preprocessed_image, original_image):
-    """Crop the barcode area using vertical and horizontal density projections."""
     vertical_projection = np.sum(preprocessed_image == 0, axis=0)
     horizontal_projection = np.sum(preprocessed_image == 0, axis=1)
 
@@ -114,14 +95,38 @@ def crop_barcode_area(preprocessed_image, original_image):
     x_start, x_end = vertical_indices[0], vertical_indices[-1]
     y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
 
-    x_start = max(0, x_start - 10)
-    x_end = min(x_end + 10, preprocessed_image.shape[1])
-    y_start = max(0, y_start - 10)
-    y_end = min(y_end + 10, preprocessed_image.shape[0])
+    padding_x = int(0.05 * (x_end - x_start))
+    padding_y = int(0.05 * (y_end - y_start))
+
+    x_start = max(0, x_start - padding_x)
+    x_end = min(x_end + padding_x, preprocessed_image.shape[1])
+    y_start = max(0, y_start - padding_y)
+    y_end = min(y_end + padding_y, preprocessed_image.shape[0])
 
     cropped = original_image[y_start:y_end, x_start:x_end]
     return cropped
 
+def process_barcode(cropped_image):
+    gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    dilated = cv2.dilate(cleaned, kernel, iterations=1)
+
+    plt.figure(figsize=(15, 10))
+    steps = [cropped_image, blurred, binary, cleaned, dilated]
+    titles = ["Original Image", "Blurred", "Binary Thresholding", "Morphological Cleaning", "Dilated Output"]
+
+    for i, (step, title) in enumerate(zip(steps, titles)):
+        plt.subplot(2, 3, i + 1)
+        plt.title(title)
+        plt.imshow(step if len(step.shape) == 2 else cv2.cvtColor(step, cv2.COLOR_BGR2RGB), cmap="gray")
+        plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     image = load_image()
@@ -129,46 +134,20 @@ if __name__ == "__main__":
         exit()
 
     original_image = image.copy()
-
-    # Step 1: Correct perspective
     perspective_corrected = correct_perspective(image)
 
-    # Step 2: Preprocess
     gray = cv2.cvtColor(perspective_corrected, cv2.COLOR_BGR2GRAY)
-    median_3 = cv2.medianBlur(gray, 3)
-    median_5 = cv2.medianBlur(median_3, 5)
-    gaussian_blur = cv2.GaussianBlur(median_5, (3, 3), 0)
-
-    # Use Gaussian blur as the base for cropping
-    binary = cv2.threshold(gaussian_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-
-    # Simplified refinement
+    blurred = cv2.medianBlur(gray, 5)
+    binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
     refined_binary = refine_binary(binary)
+    cropped_barcode = crop_barcode_area(refined_binary, perspective_corrected)
 
-    # Crop barcode area based on Gaussian blurred image
-    cropped_barcode = crop_barcode_area(gaussian_blur, refined_binary)
-
-    # Display results
     steps = [
-        original_image,
-        perspective_corrected,
-        gray,
-        median_3,
-        median_5,
-        gaussian_blur,
-        binary,
-        refined_binary,
-        cropped_barcode,
+        original_image, perspective_corrected, gray, blurred, binary, refined_binary, cropped_barcode
     ]
     titles = [
-        "Original Image",
-        "Perspective Corrected",
-        "Grayscale",
-        "Median 3x3",
-        "Median 5x5",
-        "Gaussian 3x3",
-        "Binary (Otsu)",
-        "Refined Binary",
-        "Cropped Barcode",
+        "Original Image", "Perspective Corrected", "Grayscale", "Blurred", "Binary", "Refined Binary", "Cropped Barcode"
     ]
     display_summary(steps, titles)
+
+    process_barcode(cropped_barcode)
