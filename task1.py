@@ -103,34 +103,6 @@ def perspective_correction_with_debug(image):
 
     return warped, edges, debug_image
 
-# Refinement process
-def refine_binary_image(binary_image):
-    
-    
-    # Skeletonization to thin the barcode lines
-    skeleton = cv2.ximgproc.thinning(opened, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
-    
-    # Contour filtering to remove small, irrelevant noise
-    contours, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    filtered_binary = np.zeros_like(skeleton)
-    for contour in contours:
-        if cv2.contourArea(contour) > 50:  # Threshold for minimum contour area
-            cv2.drawContours(filtered_binary, [contour], -1, 255, thickness=cv2.FILLED)
-    
-    return opened, skeleton, filtered_binary
-
-
-# Finalize binary image after "Opened" step
-def finalize_binary_image(opened_image):
-    # Remove small isolated blobs (optional)
-    contours, _ = cv2.findContours(opened_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    final_binary = np.zeros_like(opened_image)
-    for contour in contours:
-        if cv2.contourArea(contour) > 50:  # Threshold to keep relevant contours
-            cv2.drawContours(final_binary, [contour], -1, 255, thickness=cv2.FILLED)
-    return final_binary
-
-
 
 # Load the image
 image = cv2.imread(input_image_path)
@@ -158,11 +130,10 @@ adaptive_binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSI
 kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
 opened = cv2.morphologyEx(adaptive_binary, cv2.MORPH_OPEN, kernel_open)
 
-# Step 4: Refine the binary image
-final_binary = finalize_binary_image(opened)
+final_image = opened.copy()
 
 # Display updated results
-steps = [original_image, edges, debug_image, processed_image, gray, enhanced_gray, blurred, adaptive_binary, opened, final_binary]
+steps = [original_image, edges, debug_image, processed_image, gray, enhanced_gray, blurred, adaptive_binary, opened, final_image]
 titles = ["Original Image", "Edges Detected", "Debug Contour", "Processed Image",
-          "Grayscale", "Enhanced Contrast", "Blurred", "Adaptive Threshold", "Opened", "Final Binary"]
+          "Grayscale", "Enhanced Contrast", "Blurred", "Adaptive Threshold", "Opened", "Final"]
 display_summary(steps, titles)
