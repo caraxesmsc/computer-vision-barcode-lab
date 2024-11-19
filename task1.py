@@ -19,22 +19,27 @@ if not input_image_path:
 def display_summary(images, titles):
     plt.figure(figsize=(15, 10))
     for i, (img, title) in enumerate(zip(images, titles)):
-        plt.subplot(2, 4, i + 1)
+        plt.subplot(3, 3, i + 1)  # Change 2, 4 to 3, 3 for a 3x3 grid
         plt.imshow(img, cmap='gray' if len(img.shape) == 2 else None)
         plt.title(title)
         plt.axis('off')
     plt.tight_layout()
     plt.show()
 
-# Improved function to detect paper edges and apply perspective correction
-def perspective_correction(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# Perspective correction with debug
+def perspective_correction_with_debug(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+
+    # Adaptive thresholding to enhance contrast between paper and background
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         print("No contours detected.")
-        return image, edges
+        return image, edges, image.copy()  # Return original image as debug_image
 
     # Filter contours based on area and aspect ratio
     paper_contour = None
@@ -56,18 +61,13 @@ def perspective_correction(image):
                 paper_contour = approx
                 break
 
+    debug_image = image.copy()  # Initialize debug image
     if paper_contour is None:
         print("No valid paper contour found.")
-        return image, edges
+        return image, edges, debug_image  # Return image without perspective correction
 
-    # Visualize the detected contour using matplotlib
-    debug_image = image.copy()
+    # Draw detected contour on debug image
     cv2.drawContours(debug_image, [paper_contour], -1, (0, 255, 0), 2)
-    plt.figure(figsize=(8, 6))
-    plt.imshow(cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB))
-    plt.title("Detected Contour")
-    plt.axis("off")
-    plt.show()
 
     # Order points in a consistent manner (top-left, top-right, bottom-right, bottom-left)
     pts = paper_contour.reshape(4, 2)
@@ -102,7 +102,7 @@ def perspective_correction(image):
     matrix = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
 
-    return warped, edges
+    return warped, edges, debug_image
 
 # Load the image
 image = cv2.imread(input_image_path)
@@ -114,22 +114,42 @@ if image is None:
 original_image = image.copy()
 
 # Step 1: Apply perspective correction
-processed_image, edges = perspective_correction(image)
+processed_image, edges, debug_image = perspective_correction_with_debug(image)
 
-# Step 2: Convert to grayscale
-gray = cv2.cvtColor(processed_image, cv2.COLOR_BGR2GRAY)
+# Step 2: Convert to grayscale and continue processing
+# Post-processing after perspective correction with improved noise removal
+def post_process_barcode(image):
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced_gray = clahe.apply(gray)
+    
+    # Apply Gaussian Blur for noise reduction
+    blurred = cv2.GaussianBlur(enhanced_gray, (5, 5), 0)
+    
+    # Adaptive Thresholding for dynamic binarization
+    adaptive_binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY, 11, 2)
+    
+    # Morphological operations to clean up the binary image
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    morphed = cv2.morphologyEx(adaptive_binary, cv2.MORPH_CLOSE, kernel)
+    
+    # Additional erosion and dilation for further cleanup
+    kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    cleaned_binary = cv2.dilate(morphed, kernel2, iterations=1)
+    cleaned_binary = cv2.erode(cleaned_binary, kernel2, iterations=1)
+    
+    return gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary
 
-# Step 3: Blur the image to remove noise
-blurred = cv2.medianBlur(gray, 5)
 
-# Step 4: Binarize the image
-_, binary = cv2.threshold(blurred, 127, 255, cv2.THRESH_BINARY)
+# Process the corrected image
+gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary = post_process_barcode(processed_image)
 
-# Step 5: Clean the binary image
-kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-# Display all steps in a grid
-steps = [original_image, edges, processed_image, gray, blurred, binary, cleaned]
-titles = ["Original Image", "Edges Detected", "Processed Image", "Grayscale", "Blurred", "Binary", "Cleaned Binary"]
+# Display all steps including the improved post-processing
+steps = [original_image, edges, debug_image, processed_image, gray, enhanced_gray, blurred, adaptive_binary, cleaned_binary]
+titles = ["Original Image", "Edges Detected", "Debug Contour", "Processed Image",
+          "Grayscale", "Enhanced Contrast", "Blurred", "Adaptive Threshold", "Cleaned Binary"]
 display_summary(steps, titles)
