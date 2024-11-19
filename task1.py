@@ -81,26 +81,27 @@ def correct_perspective(image):
     warped = cv2.warpPerspective(image, matrix, (max_width, max_height))
     return warped
 
-
 def refine_binary(binary_image):
-    """Refine binary image using morphological operations."""
+    """Refine binary image using balanced morphological operations."""
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+
+    # Perform closing to fill small gaps
     closed = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel_close)
 
-    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
+    # Perform opening to remove noise
+    refined = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
 
-    # Fill holes inside barcode lines
-    filled = cv2.dilate(opened, kernel_close, iterations=1)
-    return filled
+    return refined
 
 
 def crop_barcode_area(thresholded_image, original_image):
     """Crop the barcode area based on vertical and horizontal projections."""
+    # Calculate vertical and horizontal projections
     vertical_projection = np.sum(thresholded_image == 0, axis=0)
     horizontal_projection = np.sum(thresholded_image == 0, axis=1)
 
-    # Detect high-density regions (threshold for projection)
+    # Detect regions with significant density
     vertical_threshold = 0.6 * np.max(vertical_projection)
     horizontal_threshold = 0.6 * np.max(horizontal_projection)
 
@@ -111,10 +112,10 @@ def crop_barcode_area(thresholded_image, original_image):
         print("Barcode region not detected.")
         return original_image
 
+    # Define bounding box with padding
     x_start, x_end = vertical_indices[0], vertical_indices[-1]
     y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
 
-    # Add padding to ensure the barcode is fully included
     x_start = max(0, x_start - 10)
     x_end = min(x_end + 10, thresholded_image.shape[1])
     y_start = max(0, y_start - 10)
@@ -143,10 +144,12 @@ if __name__ == "__main__":
     adaptive_binary = cv2.adaptiveThreshold(
         gaussian_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
     )
-    refined_binary = refine_binary(adaptive_binary)
 
-    # Step 3: Crop barcode area
-    cropped_barcode = crop_barcode_area(refined_binary, perspective_corrected)
+    # Use adaptive binary for cropping
+    cropped_barcode = crop_barcode_area(adaptive_binary, perspective_corrected)
+
+    # If refined binary is needed, refine binary after cropping
+    refined_binary = refine_binary(adaptive_binary)
 
     # Display results
     steps = [
