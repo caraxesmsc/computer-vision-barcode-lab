@@ -111,7 +111,7 @@ def process_and_display(image):
     titles = [
         "Original Image",
         "Perspective Corrected",
-        "Blurred",
+        "median 5X5",
         "Binary (Otsu)",
         "Cropped Barcode",
         "Binary Cropped",
@@ -125,6 +125,8 @@ def process_and_display(image):
         ax.axis("off")
     plt.tight_layout()
     plt.show()
+    cv2.imwrite("cleaned_barcode.png", cleaned)
+
 
 if __name__ == "__main__":
     image = load_image()
