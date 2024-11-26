@@ -47,8 +47,9 @@ def perspective_correction_pipeline(image):
 def preprocessing_pipeline(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.medianBlur(gray, 5)
-    binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    return binary
+    blurred = cv2.medianBlur(gray, 3)
+    binary = cv2.threshold(blurred, 128, 255, cv2.THRESH_BINARY)[1]
+    return binary 
 
 
 # Monica's Task: Cropping
@@ -76,13 +77,13 @@ def cropping_pipeline(binary, original_image):
     return original_image
 
 
-# Patrick's Task: Final Processing
-def final_processing_pipeline(cropped_barcode):
-    gray_cropped = cv2.cvtColor(cropped_barcode, cv2.COLOR_BGR2GRAY)
-    binary_cropped = cv2.threshold(gray_cropped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    cleaned = cv2.morphologyEx(binary_cropped, cv2.MORPH_CLOSE, kernel)
-    return cleaned
+# # Patrick's Task: Final Processing
+# def final_processing_pipeline(cropped_barcode):
+#     gray_cropped = cv2.cvtColor(cropped_barcode, cv2.COLOR_BGR2GRAY)
+#     binary_cropped = cv2.threshold(gray_cropped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+#     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+#     cleaned = cv2.morphologyEx(binary_cropped, cv2.MORPH_CLOSE, kernel)
+#     return cleaned
 
 
 # Load Image
@@ -105,41 +106,84 @@ def hide_tkinter_window():
     tk.Tk().withdraw()
 
 
-# Main Function
+# Main Function 
 def process_and_display(image, integrated=False):
-    perspective_corrected = perspective_correction_pipeline(image)
-    binary = preprocessing_pipeline(perspective_corrected)
-    cropped_barcode = cropping_pipeline(binary, perspective_corrected)
-    cleaned_barcode = final_processing_pipeline(cropped_barcode)
+    # Initialize placeholders for each step
+    perspective_corrected = None
+    binary = None
+    cropped_barcode = None
+    cleaned_barcode = None
 
+    # Step 1: Perspective Correction
+    try:
+        perspective_corrected = perspective_correction_pipeline(image)
+    except Exception as e:
+        print(f"Error in Perspective Correction: {e}")
+        perspective_corrected = image  # Fallback to the original image
+
+    # Step 2: Preprocessing
+    if perspective_corrected is not None:
+        try:
+            binary = preprocessing_pipeline(perspective_corrected)
+        except Exception as e:
+            print(f"Error in Preprocessing: {e}")
+
+    # Step 3: Cropping
+    if binary is not None:
+        try:
+            cropped_barcode = cropping_pipeline(binary, binary)
+        except Exception as e:
+            print(f"Error in Cropping: {e}")
+            cropped_barcode = perspective_corrected  # Fallback to perspective-corrected image
+
+    # Step 4: Final Processing
+    if cropped_barcode is not None:
+        try:
+            cleaned_barcode = final_processing_pipeline(cropped_barcode)
+        except Exception as e:
+            print(f"Error in Final Processing: {e}")
+
+    # Integrated Output (Final Result Only)
     if integrated:
-        # If integrated, only display the final result.
-        plt.figure(figsize=(8, 6))
-        plt.title("Final Processed Barcode")
-        plt.imshow(cleaned_barcode, cmap="gray")
-        plt.axis("off")
-        plt.show()
+        if cleaned_barcode is not None:
+            plt.figure(figsize=(8, 6))
+            plt.title("Final Processed Barcode")
+            plt.imshow(cleaned_barcode, cmap="gray")
+            plt.axis("off")
+            plt.show()
+        else:
+            print("Pipeline incomplete: Final result cannot be displayed.")
         return
 
-    # If pipelines are tested separately, display all steps.
-    steps = [
-        image,
-        perspective_corrected,
-        binary,
-        cropped_barcode,
-        cleaned_barcode,
-    ]
-    titles = [
-        "Original Image",
-        "Perspective Corrected",
-        "Binary (Otsu)",
-        "Cropped Barcode",
-        "Final Processed Barcode",
-    ]
-    fig, axes = plt.subplots(1, 5, figsize=(20, 6))
-    for i, (image, title) in enumerate(zip(steps, titles)):
+    # Display all steps for testing individual components
+    steps = []
+    titles = []
+
+    # Append each step only if it is completed
+    steps.append(image)
+    titles.append("Original Image")
+
+    if perspective_corrected is not None:
+        steps.append(perspective_corrected)
+        titles.append("Perspective Corrected")
+
+    if binary is not None:
+        steps.append(binary)
+        titles.append("Binary (Otsu)")
+
+    if cropped_barcode is not None:
+        steps.append(cropped_barcode)
+        titles.append("Cropped Barcode")
+
+    if cleaned_barcode is not None:
+        steps.append(cleaned_barcode)
+        titles.append("Final Processed Barcode")
+
+    # Plot the results
+    fig, axes = plt.subplots(1, len(steps), figsize=(20, 6))
+    for i, (step, title) in enumerate(zip(steps, titles)):
         ax = axes[i]
-        ax.imshow(image if len(image.shape) == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2RGB), cmap="gray")
+        ax.imshow(step if len(step.shape) == 2 else cv2.cvtColor(step, cv2.COLOR_BGR2RGB), cmap="gray")
         ax.set_title(title)
         ax.axis("off")
     plt.tight_layout()
@@ -151,5 +195,5 @@ if __name__ == "__main__":
     if image is None:
         exit()
 
-    # Set integrated=True to display only the final result.
+    # Set integrated=True to display only the final result, or False for testing individual components.
     process_and_display(image, integrated=False)
