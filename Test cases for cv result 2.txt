@@ -1,0 +1,33 @@
+Foreign object covering part of barcode: 
+ didn't detect object covering the barcode and didn't crop correctly
+hint: to correct this problem you can apply a vertical averge filter , but you will need to make sure that the object is not in the scope of this filter
+
+Blurred image:
+ did not detect the blur and didn't correct it , and detected low contrast , but it was actually perfect, and it fucked it after binarization and made a big white whole 
+
+low contrast , dark image:
+ detected low contrast but didn't fix it properly after binarizing the qr code had white whole in the middle that was not there 
+i think whats missing was thresholding because the supposedly white areas where grey , and black was black
+
+low contrast , bright image: 
+ detected low contrast but didn't fix it properly after binarizing the qr code had white whole in the middle that was not there 
+but its not that bad compared to the pervious
+ 
+
+
+salt and pepper: 
+ deetcetd correctly the slat and peper ,  and didn't fix the salt and peper in a good way , i think we should use a median filter 3x3 or 5x5
+
+badly compressed:
+did not detect the compression promplem , but applied random filters that at the end fixed it , but didn't apply the correction for compression 
+ and fucked it at the end by making strange white wholes 
+
+tilted and part of it cut out: 
+ perfectly detected but didnt corrected the rotation problem and at the end fucked it 
+
+no contrast: 
+ 
+deetcetd low contrast and applied the solution , but there was some white wholes in the final image after fbinarization
+
+frequency domain problem: 
+didn't detect any problem which is weird , and the last code's fix had better output
