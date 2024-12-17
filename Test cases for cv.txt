@@ -1,23 +1,29 @@
 Foreign object covering part of barcode: 
  
 
+
 Blurred image:
  
+
 
 low contrast , dark image:
  
 
 low contrast , bright image: 
  
+ 
 
 
 salt and pepper: 
  
+ 
 
 badly compressed:
  
+ 
 
 tilted and part of it cut out: 
+ 
  
 
 no contrast: 
@@ -25,4 +31,5 @@ no contrast:
 
 
 frequency domain problem: 
+ 
  

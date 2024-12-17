@@ -1,0 +1,33 @@
+Foreign object covering part of barcode: 
+Detected " nothing" and not "a froeign object that covers small part of the barcode
+cropping worked but included the part of the foreign object that doesn't cover barcode and did not apply the average filter 
+
+Blurred image:
+detected nothing , but output was good  
+
+
+low contrast , dark image:
+detected low contrast and fixed it 
+
+low contrast , bright image: 
+detected low contrast and fixed it , but cropped it badly (included  the numbers below which is not good )
+
+
+salt and pepper: 
+ detected correctly but overfixed , as closing made the bars all touching and no whites 
+
+badly compressed:
+ didnt detect the compression but fixed the image pverall 
+
+tilted and part of it cut out: 
+ detected and corrected good but not cropped
+
+no contrast: 
+ detected low contrast and fixed it 
+
+
+frequency domain problem: 
+ did not detect , and this time its not fixed the barcode is fucked , and no cropping was done 
+
+
+

@@ -1,0 +1,32 @@
+Foreign object covering part of barcode: 
+Detected "low contrast" and not "a froeign object that covers small part of the barcode
+
+Blurred image:
+ Detected "low contrast and foreign object" and not "the blur" and there was no provlem with contrast nor was there a foreign object
+
+
+low contrast , dark image:
+ good 
+
+low contrast , bright image: 
+ detected correctly but fixed it and somehow the next step it worked on the original image thats not fixed , and at the end the binarization fucked it with holes
+
+
+salt and pepper: 
+correctly deteceted but the applied to be honest removed most of salt and pepper on the barcodes but not the area around it , which i guess is okay 
+
+badly compressed:
+ did not detect the compression but somehow after apllying "salt and peper " filters it was a visible barcode
+
+tilted and part of it cut out: 
+ rotation fucked up get back rotation of version 1
+
+no contrast: 
+ why did it detect foreign object when there wasn't ? but it correctly  detected low contrast, however later in the steps the image used was the original for some wierd reason and the binarization made uncesseary holes 
+
+
+frequency domain problem: 
+ did not detect , but somehow applied the filter , yes the requency distortion where removed from the barcode area
+
+
+overall all test cases lack the cropping mechanism it was working in my original code along with prespective correction , but i guess its not necessary as its kind of not required 
