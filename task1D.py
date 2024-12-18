@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from scipy import ndimage, fftpack
+from scipy import ndimage
 import matplotlib.pyplot as plt
 from tkinter import filedialog
 
@@ -9,187 +9,146 @@ class BarcodePreprocessor:
         self.steps = []
 
     def add_step(self, description, image):
+        """Save each step for visualization"""
         self.steps.append((description, image.copy()))
 
     def detect_image_problems(self, image):
-        """Optimized problem detection combining best elements"""
+        """Detect problems combining strategies from codebase 1 and codebase 2."""
         problems = []
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image
 
-        # Foreign object detection (improved)
+        # Foreign object detection (from codebase 2)
         vertical_profile = np.mean(gray, axis=0)
-        horizontal_profile = np.mean(gray, axis=1)
-        v_thresh = np.mean(vertical_profile) + 2.5 * np.std(vertical_profile)
-        h_thresh = np.mean(horizontal_profile) + 2.5 * np.std(horizontal_profile)
-        
-        v_anomaly = np.any(vertical_profile > v_thresh)
-        h_anomaly = np.any(horizontal_profile > h_thresh)
-        if v_anomaly or h_anomaly:
-            # Additional check: verify if the anomaly is localized
-            if np.sum((vertical_profile > v_thresh).astype(int)) < gray.shape[1] * 0.4:
-                problems.append('foreign_object')
+        profile_std = np.std(vertical_profile)
+        # Slightly increase threshold to reduce false positives
+        if np.any(np.abs(vertical_profile - np.mean(vertical_profile)) > 3.0 * profile_std):
+            problems.append('foreign_object')
 
-        # Blur detection (optimized)
+        # Blur detection (from codebase 1)
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        if laplacian_var < 100:  # Higher threshold from codebase 1
+        if laplacian_var < 80:  # slightly relaxed threshold from codebase 1 (100 to 80)
             problems.append('blur')
 
-        # Enhanced contrast detection
-        p5, p95 = np.percentile(gray, [5, 95])
-        mean_intensity = np.mean(gray)
-        if (p95 - p5) < 80 or mean_intensity < 50 or mean_intensity > 200:
+        # Low contrast detection (from codebase 1)
+        hist = cv2.calcHist([gray],[0],None,[256],[0,256])
+        hist_norm = hist.ravel()/hist.sum()
+        cumsum = np.cumsum(hist_norm)
+        idx_5 = np.where(cumsum>=0.05)[0][0]
+        idx_95 = np.where(cumsum>=0.95)[0][0]
+        if (idx_95 - idx_5) < 50:
             problems.append('low_contrast')
 
-        # Salt and pepper detection (improved)
+        # Salt and pepper detection (from codebase 1)
         median = cv2.medianBlur(gray, 3)
         noise_diff = np.abs(gray - median)
-        if np.percentile(noise_diff, 95) > 30:
+        if np.mean(noise_diff) > 10:
             problems.append('salt_pepper')
 
-        # Frequency domain analysis (refined)
+        # Frequency domain problem detection (from codebase 2)
         f_transform = np.fft.fft2(gray)
         f_shift = np.fft.fftshift(f_transform)
         magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
         if np.std(magnitude_spectrum) > 45:
             problems.append('frequency_domain')
 
-        # Rotation detection (from codebase 1 - most reliable)
-        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
-        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
-        if lines is not None:
-            angles = []
-            for rho, theta in lines[:, 0]:
-                angle = np.degrees(theta)
-                if angle < 45:
-                    angles.append(angle)
-                elif angle > 135:
-                    angles.append(angle - 180)
-            if angles and abs(np.median(angles)) > 5:
+        # Rotation detection (from codebase 1)
+        edges = cv2.Canny(gray, 100, 200)
+        coords = np.column_stack(np.where(edges > 0))
+        if len(coords) > 0:
+            angle = cv2.minAreaRect(coords)[-1]
+            if abs(angle) > 5:
                 problems.append('rotation')
-        
+
         return problems
 
-    def remove_foreign_object(self, image):
-        """Enhanced foreign object removal"""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
-        
-        # Identify anomalous regions
+    def remove_foreign_object(self, image, window_size=5):
+        """Vertical average filter approach (from codebase 2) to remove foreign objects."""
+        gray = image if len(image.shape)==2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         vertical_profile = np.mean(gray, axis=0)
-        horizontal_profile = np.mean(gray, axis=1)
-        
-        # Calculate dynamic thresholds
-        v_thresh = np.mean(vertical_profile) + 2 * np.std(vertical_profile)
-        h_thresh = np.mean(horizontal_profile) + 2 * np.std(horizontal_profile)
-        
-        # Create masks
-        v_mask = vertical_profile > v_thresh
-        h_mask = horizontal_profile > h_thresh
-        
-        # Apply corrections
+        smoothed_profile = np.convolve(vertical_profile, np.ones(window_size)/window_size, mode='same')
+        threshold = np.mean(smoothed_profile) + 1.5 * np.std(smoothed_profile)
+
+        anomalous = vertical_profile > threshold
         cleaned = gray.copy()
-        
-        # Fix vertical anomalies
         for i in range(gray.shape[1]):
-            if v_mask[i]:
-                left = max(0, i-1)
-                right = min(gray.shape[1]-1, i+1)
-                while left > 0 and v_mask[left]:
-                    left -= 1
-                while right < gray.shape[1]-1 and v_mask[right]:
-                    right += 1
-                if not v_mask[left]:
-                    cleaned[:, i] = gray[:, left]
-                elif not v_mask[right]:
-                    cleaned[:, i] = gray[:, right]
-        
-        # Fix horizontal anomalies
-        for i in range(gray.shape[0]):
-            if h_mask[i]:
-                top = max(0, i-1)
-                bottom = min(gray.shape[0]-1, i+1)
-                while top > 0 and h_mask[top]:
-                    top -= 1
-                while bottom < gray.shape[0]-1 and h_mask[bottom]:
-                    bottom += 1
-                if not h_mask[top]:
-                    cleaned[i, :] = gray[top, :]
-                elif not h_mask[bottom]:
-                    cleaned[i, :] = gray[bottom, :]
-                    
+            if anomalous[i]:
+                left_idx = i-1
+                right_idx = i+1
+                while left_idx > 0 and anomalous[left_idx]:
+                    left_idx -= 1
+                while right_idx < gray.shape[1]-1 and anomalous[right_idx]:
+                    right_idx += 1
+                if left_idx >= 0 and not anomalous[left_idx]:
+                    cleaned[:, i] = gray[:, left_idx]
+                elif right_idx < gray.shape[1] and not anomalous[right_idx]:
+                    cleaned[:, i] = gray[:, right_idx]
+                # If both sides are anomalous, leave as is.
         return cleaned
 
-    def fix_blur(self, image):
-        """Two-stage deblurring"""
-        # First stage: Unsharp masking
-        gaussian = cv2.GaussianBlur(image, (0, 0), 3)
-        unsharp = cv2.addWeighted(image, 2.0, gaussian, -1.0, 0)
-        
-        # Second stage: Sharpening kernel
-        kernel = np.array([[-1,-1,-1],
-                         [-1, 9,-1],
-                         [-1,-1,-1]])
-        return cv2.filter2D(unsharp, -1, kernel)
-
-    def fix_contrast(self, image):
-        """Multi-stage contrast enhancement"""
-        # First stage: CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(image)
-        
-        # Second stage: Contrast stretching
-        p2, p98 = np.percentile(enhanced, (2, 98))
-        return np.interp(enhanced, (p2, p98), (0, 255)).astype(np.uint8)
-
-    def fix_salt_pepper(self, image):
-        """Progressive median filtering"""
-        # First pass with small kernel
-        result = cv2.medianBlur(image, 3)
-        
-        # Second pass with larger kernel
-        result = cv2.medianBlur(result, 5)
-        
-        # Check noise level
-        if np.std(result - image) > 30:
-            result = cv2.medianBlur(result, 3)
-            
-        return result
-
     def fix_frequency_domain(self, image):
-        """Optimized frequency domain correction"""
+        """Frequency domain fix from codebase 2."""
         f_transform = np.fft.fft2(image)
         f_shift = np.fft.fftshift(f_transform)
-        
+
         rows, cols = image.shape
         crow, ccol = rows//2, cols//2
-        
-        # Create frequency mask
         mask = np.ones((rows, cols), np.uint8)
-        r = 30  # Radius for frequency cutoff
-        center = [crow, ccol]
+        r = 30
         x, y = np.ogrid[:rows, :cols]
-        mask_area = (x - center[0])**2 + (y - center[1])**2 <= r*r
+        mask_area = (x - crow)**2 + (y - ccol)**2 <= r*r
         mask[mask_area] = 0
-        
-        # Apply mask and reconstruct
+
         f_shift = f_shift * mask
         f_ishift = np.fft.ifftshift(f_shift)
         img_back = np.fft.ifft2(f_ishift)
         img_back = np.abs(img_back)
-        
+
         return cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
-    def fix_rotation(self, image):
-        """Rotation correction from codebase 1"""
+    def remove_salt_and_pepper(self, image):
+        """Enhanced salt and pepper removal (from codebase 2)."""
+        result = cv2.medianBlur(image, 3)
+        result = cv2.medianBlur(result, 5)
+        # Check residual noise
+        noise_level = np.std(result - image)
+        if noise_level > 30:
+            result = cv2.medianBlur(result, 3)
+        return result
+
+    @staticmethod
+    def fix_blur(image):
+        """From codebase 1."""
+        gaussian = cv2.GaussianBlur(image, (0, 0), 3)
+        unsharp = cv2.addWeighted(image, 1.5, gaussian, -0.5, 0)
+        return unsharp
+
+    @staticmethod
+    def fix_contrast(image):
+        """From codebase 1."""
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(image)
+
+    @staticmethod
+    def binarize(image):
+        """From codebase 1."""
+        return cv2.adaptiveThreshold(
+            image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 51, 10
+        )
+
+    @staticmethod
+    def fix_rotation(image):
+        """From codebase 1."""
         edges = cv2.Canny(image, 50, 150, apertureSize=3)
         lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
         if lines is not None:
             angles = []
-            for rho, theta in lines[:, 0]:
+            for rho, theta in lines[:,0]:
                 angle = np.degrees(theta)
                 if angle < 45:
                     angles.append(angle)
                 elif angle > 135:
-                    angles.append(angle - 180)
+                    angles.append(angle-180)
             if angles:
                 median_angle = np.median(angles)
                 rows, cols = image.shape
@@ -197,141 +156,98 @@ class BarcodePreprocessor:
                 return cv2.warpAffine(image, matrix, (cols, rows), flags=cv2.INTER_CUBIC)
         return image
 
-    def binarize(self, image):
-        """Enhanced binarization to prevent holes"""
-        # Pre-normalize
-        p2, p98 = np.percentile(image, (2, 98))
-        normalized = np.interp(image, (p2, p98), (0, 255)).astype(np.uint8)
-        
-        # Adaptive threshold with larger window
-        binary = cv2.adaptiveThreshold(
-            normalized,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            81,  # Increased window size
-            10
-        )
-        
-        # Morphological operations to close small holes
-        kernel = np.ones((2,2), np.uint8)
-        return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-    def crop_to_barcode(self, binary):
-        """Enhanced cropping with aspect ratio validation"""
+    @staticmethod
+    def crop_to_barcode(binary):
+        """From codebase 1."""
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return binary
-            
-        # Filter contours by aspect ratio and area
-        valid_contours = []
-        for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = w / float(h)
-            area = w * h
-            if 1.5 < aspect_ratio < 5 and area > (binary.shape[0] * binary.shape[1] * 0.05):
-                valid_contours.append((contour, area))
-        
-        if valid_contours:
-            largest_contour = max(valid_contours, key=lambda x: x[1])[0]
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            padding_x = int(0.1 * w)
-            padding_y = int(0.1 * h)
-            x = max(0, x - padding_x)
-            y = max(0, y - padding_y)
-            w = min(binary.shape[1] - x, w + 2 * padding_x)
-            h = min(binary.shape[0] - y, h + 2 * padding_y)
-            return binary[y:y+h, x:x+w]
-        
-        return binary
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        padding = 10
+        x = max(0, x - padding)
+        y = max(0, y - padding)
+        w = min(binary.shape[1] - x, w + 2 * padding)
+        h = min(binary.shape[0] - y, h + 2 * padding)
+        return binary[y:y + h, x:x + w]
 
     def preprocess_image(self, image):
-        """Optimized preprocessing pipeline"""
+        """Unified preprocessing pipeline (based on codebase 3's approach)."""
         self.steps = []
         self.add_step("Original Image", image)
-        
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
-        
-        # Detect problems
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image
         problems = self.detect_image_problems(image)
         self.add_step("Detected Problems: " + ", ".join(problems), gray)
-        
-        # Process image
+
         processed = gray.copy()
-        
-        # Apply fixes in optimal order
+
+        # Order of fixes as in codebase 3:
+        # 1. Foreign object
         if 'foreign_object' in problems:
             processed = self.remove_foreign_object(processed)
             self.add_step("Removed Foreign Object", processed)
-        
+
+        # 2. Frequency domain
         if 'frequency_domain' in problems:
             processed = self.fix_frequency_domain(processed)
             self.add_step("Fixed Frequency Domain", processed)
-        
+
+        # 3. Salt and pepper
         if 'salt_pepper' in problems:
-            processed = self.fix_salt_pepper(processed)
-            self.add_step("Removed Salt and Pepper", processed)
-        
+            processed = self.remove_salt_and_pepper(processed)
+            self.add_step("Removed Salt & Pepper", processed)
+
+        # 4. Blur
         if 'blur' in problems:
             processed = self.fix_blur(processed)
             self.add_step("Fixed Blur", processed)
-        
+
+        # 5. Compression artifacts
+        if 'compression_artifacts' in problems:
+            processed = self.fix_compression(processed)
+            self.add_step("Fixed Compression Artifacts", processed)
+
+        # 6. Low contrast
         if 'low_contrast' in problems:
             processed = self.fix_contrast(processed)
             self.add_step("Enhanced Contrast", processed)
-        
-        # Binarize after all intensity corrections
+
+        # Binarize
         binary = self.binarize(processed)
-        self.add_step("Binarized", binary)
-        
-        # Fix rotation
+        self.add_step("Binarized Image", binary)
+
+        # Rotation
         if 'rotation' in problems:
             binary = self.fix_rotation(binary)
-            self.add_step("Fixed Rotation", binary)
-        
-        # Crop last
+            self.add_step("Corrected Rotation", binary)
+
+        # Crop
         cropped = self.crop_to_barcode(binary)
-        self.add_step("Cropped", cropped)
-        
+        self.add_step("Cropped Barcode", cropped)
+
         return cropped
 
     def visualize_steps(self):
-        """Enhanced visualization"""
-        n_steps = len(self.steps)
-        cols = min(5, n_steps)
-        rows = (n_steps + cols - 1) // cols
-        
-        fig, axes = plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
-        if rows == 1:
-            axes = axes.reshape(1, -1)
-        elif cols == 1:
-            axes = axes.reshape(-1, 1)
-        
-        for i, (description, image) in enumerate(self.steps):
-            row = i // cols
-            col = i % cols
-            ax = axes[row, col]
-            ax.imshow(image if len(image.shape) == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
-                     cmap='gray')
+        """Visualize all processing steps."""
+        fig, axes = plt.subplots(1, len(self.steps), figsize=(5*len(self.steps), 5))
+        if len(self.steps) == 1:
+            axes = [axes]
+        for i, (description, img) in enumerate(self.steps):
+            ax = axes[i]
+            if len(img.shape) == 2:
+                ax.imshow(img, cmap='gray')
+            else:
+                ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             ax.set_title(description, fontsize=8)
             ax.axis('off')
-        
-        # Hide empty subplots
-        for i in range(len(self.steps), rows*cols):
-            row = i // cols
-            col = i % cols
-            axes[row, col].axis('off')
-        
         plt.tight_layout()
         plt.show()
 
+
 if __name__ == "__main__":
     preprocessor = BarcodePreprocessor()
-    image_path = filedialog.askopenfilename(
-        title="Select an Image",
-        filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")]
-    )
+    image_path = filedialog.askopenfilename(title="Select an Image", filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
     if image_path:
         image = cv2.imread(image_path)
         if image is not None:
