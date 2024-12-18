@@ -19,36 +19,60 @@ class BarcodePreprocessor:
         problems = []
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image
 
-        # Foreign object detection (Using codebase 7's improved logic + peak detection)
+        # --- Foreign object detection (Using codebase 7's improved logic + peak detection) ---
+        
+        temp_processed = gray.copy()
+        
+        # Fix frequency domain and contrast issues for bar thickness estimation only if they are detected
+        temp_problems = []
+        
+        f_transform = np.fft.fft2(gray)
+        f_shift = np.fft.fftshift(f_transform)
+        magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
+        if np.std(magnitude_spectrum) > 45:
+            temp_problems.append('frequency_domain')
+            
+        hist = cv2.calcHist([gray],[0],None,[256],[0,256])
+        hist_norm = hist.ravel()/hist.sum()
+        cumsum = np.cumsum(hist_norm)
+        idx_5 = np.where(cumsum>=0.05)[0][0]
+        idx_95 = np.where(cumsum>=0.95)[0][0]
+        if (idx_95 - idx_5) < 50:
+            temp_problems.append('low_contrast')
+        
+        if 'frequency_domain' in temp_problems:
+            temp_processed = self.fix_frequency_domain(temp_processed)
+        if 'low_contrast' in temp_problems:
+            temp_processed = self.fix_contrast(temp_processed)
+        
+        bar_thickness = self.estimate_bar_thickness(temp_processed)
+        
+        
         vertical_profile = np.mean(gray, axis=0)
-        
-        
-        peaks, _ = find_peaks(vertical_profile, prominence=10)
-        valleys, _ = find_peaks(-vertical_profile, prominence=10)
-        
-        
-        if len(peaks) > 0 and len(valleys) > 0:
-            median_peak_distance = np.median(np.diff(np.sort(np.concatenate((peaks, valleys)))))
-            
-            
-            v_std = np.std(vertical_profile)
-            
-            if np.any(np.abs(vertical_profile - np.mean(vertical_profile)) > 3.0 * v_std):
-                
-                anomalous_regions = np.where(np.abs(vertical_profile - np.mean(vertical_profile)) > 3.0 * v_std)[0]
-                
-                
-                for region in np.split(anomalous_regions, np.where(np.diff(anomalous_regions) > median_peak_distance)[0] + 1):
-                    if len(region) < median_peak_distance * 4:
-                        problems.append('foreign_object')
-                        break
+        horizontal_profile = np.mean(gray, axis=1)
 
-        # Blur detection (Codebase 1's threshold)
+        
+        v_std = np.std(vertical_profile)
+        h_std = np.std(horizontal_profile)
+
+        
+        v_anomalies = np.where(np.abs(vertical_profile - np.mean(vertical_profile)) > 3.0 * v_std)[0]
+        h_anomalies = np.where(np.abs(horizontal_profile - np.mean(horizontal_profile)) > 3.0 * h_std)[0]
+
+        
+        v_anomalous_regions = self.get_anomalous_regions(v_anomalies, bar_thickness)
+        h_anomalous_regions = self.get_anomalous_regions(h_anomalies, bar_thickness)
+
+        
+        if len(v_anomalous_regions) > 0 or len(h_anomalous_regions) > 0:
+            problems.append('foreign_object')
+
+        # --- Blur detection (Slightly more sensitive threshold) ---
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        if laplacian_var < 80:
+        if laplacian_var < 90:  # Increased sensitivity (from 80)
             problems.append('blur')
 
-        # Low contrast detection (Codebase 1)
+        # --- Low contrast detection (Codebase 1) ---
         hist = cv2.calcHist([gray],[0],None,[256],[0,256])
         hist_norm = hist.ravel()/hist.sum()
         cumsum = np.cumsum(hist_norm)
@@ -57,20 +81,32 @@ class BarcodePreprocessor:
         if (idx_95 - idx_5) < 50:
             problems.append('low_contrast')
 
-        # Salt and pepper detection (Codebase 1)
+        # --- Salt and pepper detection (Codebase 1) ---
         median = cv2.medianBlur(gray, 3)
         noise_diff = np.abs(gray - median)
         if np.mean(noise_diff) > 10:
             problems.append('salt_pepper')
-
-        # Frequency domain detection (Codebase 2)
+            
+        # --- Compression artifacts detection (heuristic) ---
         f_transform = np.fft.fft2(gray)
         f_shift = np.fft.fftshift(f_transform)
         magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
+
+        
+        high_freq_noise = np.std(magnitude_spectrum[0:magnitude_spectrum.shape[0]//4, 0:magnitude_spectrum.shape[1]//4]) + \
+                          np.std(magnitude_spectrum[0:magnitude_spectrum.shape[0]//4, 3*magnitude_spectrum.shape[1]//4:]) + \
+                          np.std(magnitude_spectrum[3*magnitude_spectrum.shape[0]//4:, 0:magnitude_spectrum.shape[1]//4]) + \
+                          np.std(magnitude_spectrum[3*magnitude_spectrum.shape[0]//4:, 3*magnitude_spectrum.shape[1]//4:])
+
+        
+        if high_freq_noise > 15:
+            problems.append('compression_artifacts')
+
+        # --- Frequency domain detection (Codebase 2) ---
         if np.std(magnitude_spectrum) > 45:
             problems.append('frequency_domain')
 
-        # Rotation detection (Codebase 1)
+        # --- Rotation detection (Codebase 1) ---
         edges = cv2.Canny(gray, 100, 200)
         coords = np.column_stack(np.where(edges > 0))
         if len(coords) > 0:
@@ -80,11 +116,26 @@ class BarcodePreprocessor:
 
         return problems
 
+    def get_anomalous_regions(self, anomalies, bar_thickness):
+        """Helper function to group contiguous anomalous regions"""
+        regions = []
+        if len(anomalies) > 0:
+            current_region = [anomalies[0]]
+            for i in range(1, len(anomalies)):
+                if anomalies[i] == anomalies[i-1] + 1 and anomalies[i] - current_region[0] < bar_thickness * 2:
+                    current_region.append(anomalies[i])
+                else:
+                    regions.append(current_region)
+                    current_region = [anomalies[i]]
+            regions.append(current_region)
+        return regions
     # -------------------------
     # Utility Functions
     # -------------------------
+    
+    
     def fix_frequency_domain(self, image):
-        """Fix frequency domain issues (Codebase 2 & 3)"""
+        """Fix frequency domain issues (Gaussian high-pass filter)"""
         f_transform = np.fft.fft2(image)
         f_shift = np.fft.fftshift(f_transform)
         rows, cols = image.shape
@@ -124,7 +175,13 @@ class BarcodePreprocessor:
         kernel = np.array([[-1,-1,-1],
                          [-1, 9,-1],
                          [-1,-1,-1]])
-        return cv2.filter2D(unsharp, -1, kernel)
+        
+        # Check if further sharpening is needed
+        laplacian_var = cv2.Laplacian(unsharp, cv2.CV_64F).var()
+        if laplacian_var < 150:  # Only sharpen more if still somewhat blurry
+            return cv2.filter2D(unsharp, -1, kernel)
+        else:
+            return unsharp
 
     def fix_contrast(self, image):
         """Fix contrast (Codebase 1, with adaptive CLAHE from Codebase 5)"""
@@ -155,25 +212,23 @@ class BarcodePreprocessor:
                 median_angle = np.median(angles)
                 rows, cols = image.shape
                 matrix = cv2.getRotationMatrix2D((cols/2, rows/2), median_angle, 1)
-                rotated = cv2.warpAffine(image, matrix, (cols, rows), flags=cv2.INTER_CUBIC)
                 
-                # Check for barcode truncation after rotation and adjust if needed
-                if abs(median_angle) > 1:
-                    
-                    rotated_edges = cv2.Canny(rotated, 50, 150, apertureSize=3)
-                    
-                    
-                    left_edge = np.min(np.where(rotated_edges > 0)[1]) if np.any(rotated_edges > 0) else 0
-                    right_edge = np.max(np.where(rotated_edges > 0)[1]) if np.any(rotated_edges > 0) else cols
-                    
-                    if left_edge > 2 or (cols - right_edge) > 2:
-                        
-                        padding_x = max(left_edge, (cols - right_edge))
-                        
-                        
-                        padded_rotated = cv2.copyMakeBorder(rotated, 0, 0, padding_x, padding_x, cv2.BORDER_CONSTANT, value=[255,255,255])
-                        
-                        return padded_rotated
+                # Calculate padding to avoid cropping after rotation
+                angle_rad = np.radians(abs(median_angle))
+                
+                new_width = int(cols * np.abs(np.cos(angle_rad)) + rows * np.abs(np.sin(angle_rad)))
+                new_height = int(rows * np.abs(np.cos(angle_rad)) + cols * np.abs(np.sin(angle_rad)))
+                
+                
+                pad_x = (new_width - cols) // 2
+                pad_y = (new_height - rows) // 2
+
+               
+                rotated = cv2.warpAffine(image, matrix, (new_width, new_height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+                
+                # Add padding to the rotated image
+                rotated = cv2.copyMakeBorder(rotated, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+
                 return rotated
 
         return image
@@ -191,7 +246,7 @@ class BarcodePreprocessor:
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
             81,  # Larger window
-            10
+            7
         )
         
         # Light cleanup without creating holes
@@ -232,34 +287,39 @@ class BarcodePreprocessor:
     def remove_foreign_object(self, image):
         """Remove foreign objects (Codebase 7's bar thickness logic, enhanced)"""
         gray = image.copy()
-        
-        
-        temp_processed = gray.copy()
-        if 'frequency_domain' in self.detect_image_problems(gray):
-            temp_processed = self.fix_frequency_domain(temp_processed)
-        if 'low_contrast' in self.detect_image_problems(gray):
-            temp_processed = self.fix_contrast(temp_processed)
 
-        # Estimate bar thickness
+        # Estimate bar thickness (after frequency domain and contrast fixes)
+        temp_processed = gray.copy()
+        
+        # Only apply fixes if the problems are detected in the initial problem detection
+        if 'frequency_domain' in problems:
+            temp_processed = self.fix_frequency_domain(temp_processed)
+        if 'low_contrast' in problems:
+            temp_processed = self.fix_contrast(temp_processed)
+            
         bar_thickness = self.estimate_bar_thickness(temp_processed)
 
-        
+        # Get vertical and horizontal profiles
         vertical_profile = np.mean(gray, axis=0)
         horizontal_profile = np.mean(gray, axis=1)
 
-        
+        # Calculate standard deviations
         v_std = np.std(vertical_profile)
         h_std = np.std(horizontal_profile)
 
-        
+        # Find anomalous regions
         v_anomalous = np.abs(vertical_profile - np.mean(vertical_profile)) > 3.0 * v_std
         h_anomalous = np.abs(horizontal_profile - np.mean(horizontal_profile)) > 3.0 * h_std
+        
+        v_anomalous_regions = self.get_anomalous_regions(np.where(v_anomalous)[0], bar_thickness)
+        h_anomalous_regions = self.get_anomalous_regions(np.where(h_anomalous)[0], bar_thickness)
 
         cleaned = gray.copy()
-
-        # Vertical pass
-        for i in range(gray.shape[1]):
-            if v_anomalous[i]:
+        
+        # --- Vertical pass ---
+        for region in v_anomalous_regions:
+            for i in region:
+                
                 
                 left_idx = i - 1
                 while left_idx >= 0 and left_idx >= i - bar_thickness and v_anomalous[left_idx]:
@@ -272,13 +332,19 @@ class BarcodePreprocessor:
 
                
                 if left_idx >= 0 and left_idx >= i - bar_thickness and not v_anomalous[left_idx]:
-                    cleaned[:, i] = gray[:, left_idx]
+                    
+                    left_bar_values = gray[:, max(0, left_idx - bar_thickness):left_idx + 1]
+                    
+                    cleaned[:, i] = np.mean(left_bar_values, axis=1)
                 elif right_idx < gray.shape[1] and right_idx <= i + bar_thickness and not v_anomalous[right_idx]:
-                    cleaned[:, i] = gray[:, right_idx]
-
+                    
+                    right_bar_values = gray[:, right_idx:min(gray.shape[1], right_idx + bar_thickness + 1)]
+                    
+                    cleaned[:, i] = np.mean(right_bar_values, axis=1)
         
-        for j in range(cleaned.shape[0]):
-            if h_anomalous[j]:
+        # --- Horizontal pass ---
+        for region in h_anomalous_regions:
+            for j in region:
                 
                 top_idx = j - 1
                 while top_idx >= 0 and top_idx >= j - bar_thickness and h_anomalous[top_idx]:
@@ -291,9 +357,15 @@ class BarcodePreprocessor:
 
                
                 if top_idx >= 0 and top_idx >= j - bar_thickness and not h_anomalous[top_idx]:
-                    cleaned[j, :] = cleaned[top_idx, :]
+                    
+                    top_bar_values = cleaned[max(0, top_idx - bar_thickness):top_idx + 1, :]
+                    
+                    cleaned[j, :] = np.mean(top_bar_values, axis=0)
                 elif bottom_idx < cleaned.shape[0] and bottom_idx <= j + bar_thickness and not h_anomalous[bottom_idx]:
-                    cleaned[j, :] = cleaned[bottom_idx, :]
+                    
+                    bottom_bar_values = cleaned[bottom_idx:min(cleaned.shape[0], bottom_idx + bar_thickness + 1), :]
+                    
+                    cleaned[j, :] = np.mean(bottom_bar_values, axis=0)
 
         return cleaned
 
@@ -311,36 +383,70 @@ class BarcodePreprocessor:
             area = w * h
             if 1.5 < aspect_ratio < 5 and area > (binary.shape[0] * binary.shape[1] * 0.05):
                 valid_contours.append((contour, area))
-        
+
         if valid_contours:
             largest_contour = max(valid_contours, key=lambda x: x[1])[0]
             x, y, w, h = cv2.boundingRect(largest_contour)
+
+            # --- Refined cropping logic ---
+            # 1. Analyze horizontal and vertical profiles to find tighter bounds
+            horizontal_profile = np.sum(binary, axis=1)
+            vertical_profile = np.sum(binary, axis=0)
+
+            # 2. Find the first and last rows/cols with significant white pixel count
+            
+            
+            
+            first_row = np.where(horizontal_profile > w * 255 * 0.1)[0][0]
+            last_row = np.where(horizontal_profile > w * 255 * 0.1)[0][-1]
+            first_col = np.where(vertical_profile > h * 255 * 0.1)[0][0]
+            last_col = np.where(vertical_profile > h * 255 * 0.1)[0][-1]
+
+            # 3. Check if these bounds are tighter than the contour bounds
+            if first_col > x:
+                x = first_col
+            if last_col < x + w:
+                w = last_col - x
+            if first_row > y:
+                y = first_row
+            if last_row < y + h:
+                h = last_row - y
             
             
             if not (w > binary.shape[1] * 0.8 and h > binary.shape[0] * 0.8):
+                
                 padding_x = int(0.1 * w)
                 padding_y = int(0.1 * h)
                 x = max(0, x - padding_x)
                 y = max(0, y - padding_y)
                 w = min(binary.shape[1] - x, w + 2 * padding_x)
                 h = min(binary.shape[0] - y, h + 2 * padding_y)
-                return binary[y:y+h, x:x+w]
-        
+
+            return binary[y:y+h, x:x+w]
+
         return binary
     
+    def fix_compression_artifacts(self, image):
+        """Apply mild noise reduction to fix compression artifacts"""
+        return cv2.fastNlMeansDenoising(image, None, 5, 7, 21)
+
     def preprocess_image(self, image):
         """Main preprocessing pipeline"""
         self.steps = []
         self.add_step("Original Image", image)
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image
+        
+        
+        global problems 
         problems = self.detect_image_problems(image)
         self.add_step("Detected Problems: " + ", ".join(problems), gray)
 
         processed = gray.copy()
-
-        # Apply fixes in optimal order:
-        # 1. Foreign object
+        
+        # --- Apply fixes in optimal order: ---
+        
+        # 1. Foreign object removal
         if 'foreign_object' in problems:
             processed = self.remove_foreign_object(processed)
             self.add_step("Removed Foreign Object", processed)
@@ -350,17 +456,22 @@ class BarcodePreprocessor:
             processed = self.fix_frequency_domain(processed)
             self.add_step("Fixed Frequency Domain", processed)
             
-        # 3. Salt & Pepper
+        # 3. Compression artifacts (before more aggressive noise removal)
+        if 'compression_artifacts' in problems:
+            processed = self.fix_compression_artifacts(processed)
+            self.add_step("Fixed Compression Artifacts", processed)
+
+        # 4. Salt & Pepper
         if 'salt_pepper' in problems:
             processed = self.remove_salt_and_pepper(processed)
             self.add_step("Removed Salt & Pepper", processed)
 
-        # 4. Blur
+        # 5. Blur
         if 'blur' in problems:
             processed = self.fix_blur(processed)
             self.add_step("Fixed Blur", processed)
 
-        # 5. Low Contrast
+        # 6. Low Contrast
         if 'low_contrast' in problems:
             processed = self.fix_contrast(processed)
             self.add_step("Enhanced Contrast", processed)
