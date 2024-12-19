@@ -1,4 +1,4 @@
-prompt(3/4)
+prompt(3/7)
 valid_contours=[]
 for contour in contours:x, y, w, h=cv2.boundingRect(contour)
 aspect_ratio=w/float(h)

@@ -1,4 +1,4 @@
-prompt(1/4)
+prompt(1/7)
 # [project]/2\new analysis on previous codebases.txt
 since you are very incompetent and cant process the changes correctly,so i will send the correct working parts from different versions of the code and you would have to peice them all together make sure you are adhering to the general project description that the final app should be a general solution,it will take the photo detect its problems and then apply the necessary fixes-----------------
 Codebase 1: "import cv2

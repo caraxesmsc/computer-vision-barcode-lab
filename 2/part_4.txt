@@ -1,4 +1,4 @@
-prompt(4/4)
+prompt(4/7)
 angle_rad=np.radians(abs(median_angle))
 new_width=int(cols*np.abs(np.cos(angle_rad))+rows*np.abs(np.sin(angle_rad)))
 new_height=int(rows*np.abs(np.cos(angle_rad))+cols*np.abs(np.sin(angle_rad)))
@@ -99,4 +99,510 @@ bad fixingbadly compressed:Detected Problems: salt_pepper, compression_artlfacts
 mehtilted and part of it cut out:Detected Problems: compression artifacts, rotation
 correctly rotates the imag∈ and for the first time the average filter works kindoffno contrast:Detected Problems: blur, low_contrast, compression _ artifacts
 very badfrequency domain problem+rotation:Detected Problems: compression artifacts. rotation
-fixed but i like codebase 3 correction than this
+fixed but i like codebase 3 correction than this---------------------------codebase12: "import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from tkinter import filedialog
+from scipy.signal import find_peaksclass BarcodePreprocessor:def __init__(self):self.steps=[]def add_step(self, description, image):"""Save each step for visualization."""
+self.steps.append((description, image.copy()))# -------------------------
+# Utility Functions
+# -------------------------
+def aggressive_contrast_stretch(self, image):"""Apply aggressive contrast stretching for extremely low contrast images."""
+min_val, max_val=np.min(image), np.max(image)
+if max_val == min_val:return image
+stretched=((image-min_val)/(max_val-min_val)*255).astype(np.uint8)
+return stretcheddef estimate_bar_thickness(self, image):"""Estimate the typical bar thickness using vertical runs of black pixels after adaptive binarization."""
+temp_binary=cv2.adaptiveThreshold(
+image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 61, 10)heights=[]
+for col in range(temp_binary.shape[1]):column=temp_binary[:, col]
+run_length=0
+black_runs=[]
+for val in column:if val == 0:run_length += 1
+else:if run_length>0:black_runs.append(run_length)
+run_length=0
+if run_length>0:black_runs.append(run_length)
+if black_runs:heights.extend(black_runs)
+if not heights:return 5  # Default fallback if no bars are detected
+return int(np.median(heights))def get_anomalous_regions(self, anomalies, bar_thickness):"""Group contiguous anomalous indices into regions, considering bar_thickness."""
+regions=[]
+if len(anomalies) == 0:return regions
+current_region=[anomalies[0]]
+for i in range(1, len(anomalies)):if anomalies[i] == anomalies[i-1]+1 and (anomalies[i]-current_region[0])<bar_thickness*2:current_region.append(anomalies[i])
+else:regions.append(current_region)
+current_region=[anomalies[i]]
+regions.append(current_region)
+return regionsdef detect_compression_artifacts(self, gray):"""Heuristic detection of compression artifacts based on high-frequency noise in the Fourier domain."""
+f_transform=np.fft.fft2(gray)
+f_shift=np.fft.fftshift(f_transform)
+magnitude_spectrum=20*np.log(np.abs(f_shift)+1)
+rows, cols=magnitude_spectrum.shape
+# Sample corners for high-frequency noise
+corner_std=(np.std(magnitude_spectrum[:rows//4, :cols//4])+np.std(magnitude_spectrum[:rows//4, 3*cols//4:])+np.std(magnitude_spectrum[3*rows//4:, :cols//4])+np.std(magnitude_spectrum[3*rows//4:, 3*cols//4:]))
+return corner_std>15def detect_image_problems(self, image):"""Detect image problems: blur, low_contrast, salt_pepper, foreign_object, compression_artifacts, frequency_domain, rotation."""
+gray=cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image# Preliminary frequency domain check (for foreign object analysis)
+f_transform=np.fft.fft2(gray)
+f_shift=np.fft.fftshift(f_transform)
+magnitude_spectrum=20*np.log(np.abs(f_shift)+1)
+freq_problem=np.std(magnitude_spectrum)>45# Preliminary contrast check
+hist=cv2.calcHist([gray],[0],None,[256],[0,256])
+hist_norm=hist.ravel()/hist.sum()
+cumsum=np.cumsum(hist_norm)
+idx_5=np.where(cumsum>=0.05)[0][0]
+idx_95=np.where(cumsum>=0.95)[0][0]
+low_contrast_detected=(idx_95-idx_5)<50# Temporary processing for bar thickness estimation (if needed)
+temp_processed=gray.copy()
+if freq_problem:temp_processed=self.fix_frequency_domain(temp_processed)
+if low_contrast_detected:temp_processed=self.fix_contrast(temp_processed)bar_thickness=self.estimate_bar_thickness(temp_processed)# Profiles for foreign object detection
+vertical_profile=np.mean(gray, axis=0)
+horizontal_profile=np.mean(gray, axis=1)
+v_std=np.std(vertical_profile)
+h_std=np.std(horizontal_profile)
+v_anomalies=np.where(np.abs(vertical_profile-np.mean(vertical_profile))>3.0*v_std)[0]
+h_anomalies=np.where(np.abs(horizontal_profile-np.mean(horizontal_profile))>3.0*h_std)[0]
+v_anomalous_regions=self.get_anomalous_regions(v_anomalies, bar_thickness)
+h_anomalous_regions=self.get_anomalous_regions(h_anomalies, bar_thickness)problems=[]if v_anomalous_regions or h_anomalous_regions:problems.append('foreign_object')# Blur detection: use Laplacian var+edge density
+laplacian_var=cv2.Laplacian(gray, cv2.CV_64F).var()
+edges=cv2.Canny(gray, 50, 150)
+edge_density=np.mean(edges>0)
+# If Laplacian var<90 and edge density<0.15, consider blur
+if laplacian_var<90 and edge_density<0.15:problems.append('blur')# Low contrast
+if low_contrast_detected:problems.append('low_contrast')# Salt & pepper
+median=cv2.medianBlur(gray, 3)
+noise_diff=np.abs(gray-median)
+if np.percentile(noise_diff, 95)>30:problems.append('salt_pepper')# Compression artifacts
+if self.detect_compression_artifacts(gray):problems.append('compression_artifacts')# Frequency domain
+if freq_problem:problems.append('frequency_domain')# Rotation detection
+coords=np.column_stack(np.where(edges>0))
+if len(coords)>0:angle=cv2.minAreaRect(coords)[-1]
+if abs(angle)>5:problems.append('rotation')return problemsdef fix_frequency_domain(self, image):"""Fix frequency domain issues with Gaussian high-pass filter."""
+f_transform=np.fft.fft2(image)
+f_shift=np.fft.fftshift(f_transform)
+rows, cols=image.shape
+crow, ccol=rows//2, cols//2
+sigma=30
+x=np.linspace(-ccol, ccol-1, cols)
+y=np.linspace(-crow, crow-1, rows)
+xv, yv=np.meshgrid(x, y)
+gaussian_filter=np.exp(-(xv**2+yv**2)/(2*sigma**2))
+mask=1-gaussian_filter
+f_shift=f_shift*mask
+f_ishift=np.fft.ifftshift(f_shift)
+img_back=np.fft.ifft2(f_ishift)
+img_back=np.abs(img_back)
+return cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)def remove_salt_and_pepper(self, image):"""Enhanced salt and pepper removal using iterative median filtering."""
+result=cv2.medianBlur(image, 3)
+result=cv2.medianBlur(result, 5)
+noise_level=np.std(result-image)
+if noise_level>20:result=cv2.medianBlur(result, 3)
+return resultdef fix_blur(self, image):"""Two-stage blur correction: unsharp+optional sharpening."""
+gaussian=cv2.GaussianBlur(image, (0,0), 2)
+unsharp=cv2.addWeighted(image, 1.5, gaussian, -0.5, 0)
+lap_var=cv2.Laplacian(unsharp, cv2.CV_64F).var()
+if lap_var<150:kernel=np.array([[-1,-1,-1],[-1, 9,-1],[-1,-1,-1]])
+return cv2.filter2D(unsharp, -1, kernel)
+return unsharpdef fix_contrast(self, image):"""Fix contrast using CLAHE and mild gamma correction."""
+clahe=cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+enhanced=clahe.apply(image)
+# Mild gamma correction if needed
+gamma=1.2
+invGamma=1.0/gamma
+table=np.array([(i/255.0) ** invGamma*255 for i in range(256)]).astype(np.uint8)
+enhanced=cv2.LUT(enhanced, table)
+return enhanceddef fix_compression_artifacts(self, image):"""Mild non-local means denoising to reduce compression artifacts."""
+return cv2.fastNlMeansDenoising(image, None, 5, 7, 21)def binarize(self, image):"""Binarize carefully to avoid holes."""
+p2, p98=np.percentile(image, (2,98))
+if p2 == p98:normalized=image
+else:normalized=np.interp(image, (p2,p98), (0,255)).astype(np.uint8)
+binary=cv2.adaptiveThreshold(
+normalized, 255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,51,5)kernel=np.ones((2,2), np.uint8)
+binary=cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+return binarydef remove_foreign_object(self, image):"""Remove foreign objects using bar thickness and interpolation."""
+gray=image.copy()
+# Re-check problems for frequency domain and contrast:# We'll just attempt improvements if needed
+# This is a heuristic; you could store initial problems globally if needed.
+# For simplicity, we rely on previously detected 'problems' global var.
+global problems
+temp_processed=gray.copy()
+if 'frequency_domain' in problems:temp_processed=self.fix_frequency_domain(temp_processed)
+if 'low_contrast' in problems:temp_processed=self.fix_contrast(temp_processed)
+bar_thickness=self.estimate_bar_thickness(temp_processed)vertical_profile=np.mean(gray, axis=0)
+horizontal_profile=np.mean(gray, axis=1)
+v_std=np.std(vertical_profile)
+h_std=np.std(horizontal_profile)
+v_anomalous=np.abs(vertical_profile-np.mean(vertical_profile))>3.0*v_std
+h_anomalous=np.abs(horizontal_profile-np.mean(horizontal_profile))>3.0*h_std
+v_anomalous_regions=self.get_anomalous_regions(np.where(v_anomalous)[0], bar_thickness)
+h_anomalous_regions=self.get_anomalous_regions(np.where(h_anomalous)[0], bar_thickness)cleaned=gray.copy()
+# Vertical anomalies
+for region in v_anomalous_regions:for i in region:left_idx=i-1
+while left_idx >= 0 and left_idx >= i-bar_thickness and v_anomalous[left_idx]:left_idx -= 1
+right_idx=i+1
+while right_idx<gray.shape[1] and right_idx <= i+bar_thickness and v_anomalous[right_idx]:right_idx += 1
+if left_idx >= 0 and left_idx >= i-bar_thickness and not v_anomalous[left_idx]:left_values=gray[:, max(0,left_idx-bar_thickness):left_idx+1]
+cleaned[:, i]=np.mean(left_values, axis=1)
+elif right_idx<gray.shape[1] and right_idx <= i+bar_thickness and not v_anomalous[right_idx]:right_values=gray[:, right_idx:min(gray.shape[1], right_idx+bar_thickness+1)]
+cleaned[:, i]=np.mean(right_values, axis=1)# Horizontal anomalies
+for region in h_anomalous_regions:for j in region:top_idx=j-1
+while top_idx >= 0 and top_idx >= j-bar_thickness and h_anomalous[top_idx]:top_idx -= 1
+bottom_idx=j+1
+while bottom_idx<cleaned.shape[0] and bottom_idx <= j+bar_thickness and h_anomalous[bottom_idx]:bottom_idx += 1
+if top_idx >=0 and top_idx >= j-bar_thickness and not h_anomalous[top_idx]:top_values=cleaned[max(0, top_idx-bar_thickness):top_idx+1, :]
+cleaned[j, :]=np.mean(top_values, axis=0)
+elif bottom_idx<cleaned.shape[0] and bottom_idx <= j+bar_thickness and not h_anomalous[bottom_idx]:bottom_values=cleaned[bottom_idx:min(cleaned.shape[0], bottom_idx+bar_thickness+1), :]
+cleaned[j, :]=np.mean(bottom_values, axis=0)
+return cleaneddef fix_rotation(self, image):"""Fix rotation with padding to avoid losing barcode parts."""
+edges=cv2.Canny(image, 50, 150, apertureSize=3)
+lines=cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
+if lines is not None:angles=[]
+for rho, theta in lines[:,0]:angle=np.degrees(theta)
+if angle<45:angles.append(angle)
+elif angle>135:angles.append(angle-180)
+if angles:median_angle=np.median(angles)
+rows, cols=image.shape
+angle_rad=np.radians(abs(median_angle))
+new_width=int(cols*np.abs(np.cos(angle_rad))+rows*np.abs(np.sin(angle_rad)))
+new_height=int(rows*np.abs(np.cos(angle_rad))+cols*np.abs(np.sin(angle_rad)))
+pad_x=(new_width-cols) // 2
+pad_y=(new_height-rows) // 2
+M=cv2.getRotationMatrix2D((cols/2, rows/2), median_angle, 1)
+rotated=cv2.warpAffine(image, M, (new_width, new_height),flags=cv2.INTER_CUBIC,borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+# Add padding
+rotated=cv2.copyMakeBorder(rotated, pad_y, pad_y, pad_x, pad_x,cv2.BORDER_CONSTANT, value=255)
+return rotated
+return imagedef crop_to_barcode(self, binary):"""Crop to the barcode region based on aspect ratio and area."""
+contours, _=cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+if not contours:return binary
+valid_contours=[]
+for contour in contours:x, y, w, h=cv2.boundingRect(contour)
+aspect_ratio=w/float(h)
+area=w*h
+if 1.5<aspect_ratio<5 and area>(binary.shape[0]*binary.shape[1]*0.05):valid_contours.append((contour, area))
+if valid_contours:largest_contour=max(valid_contours, key=lambda x: x[1])[0]
+x, y, w, h=cv2.boundingRect(largest_contour)
+# Add padding
+padding_x=int(0.1*w)
+padding_y=int(0.1*h)
+x=max(0, x-padding_x)
+y=max(0, y-padding_y)
+w=min(binary.shape[1]-x, w+2*padding_x)
+h=min(binary.shape[0]-y, h+2*padding_y)
+return binary[y:y+h, x:x+w]
+return binarydef preprocess_image(self, image):"""Main preprocessing pipeline."""
+self.steps=[]
+self.add_step("Original Image", image)gray=cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image
+global problems
+problems=self.detect_image_problems(image)
+self.add_step("Detected Problems: "+", ".join(problems), gray)processed=gray.copy()# Foreign object first
+if 'foreign_object' in problems:processed=self.remove_foreign_object(processed)
+self.add_step("Removed Foreign Object", processed)# Frequency domain second
+if 'frequency_domain' in problems:processed=self.fix_frequency_domain(processed)
+self.add_step("Fixed Frequency Domain", processed)# Compression artifacts
+if 'compression_artifacts' in problems:processed=self.fix_compression_artifacts(processed)
+self.add_step("Fixed Compression Artifacts", processed)# Salt & Pepper
+if 'salt_pepper' in problems:processed=self.remove_salt_and_pepper(processed)
+self.add_step("Removed Salt & Pepper", processed)# Blur
+if 'blur' in problems:processed=self.fix_blur(processed)
+self.add_step("Fixed Blur", processed)# Low contrast
+if 'low_contrast' in problems:processed=self.fix_contrast(processed)
+self.add_step("Enhanced Contrast", processed)# Binarize
+binary=self.binarize(processed)
+self.add_step("Binarized", binary)# Rotation last to avoid losing barcode parts
+if 'rotation' in problems:binary=self.fix_rotation(binary)
+self.add_step("Corrected Rotation", binary)# Crop
+cropped=self.crop_to_barcode(binary)
+self.add_step("Cropped Barcode", cropped)return croppeddef visualize_steps(self):"""Visualize all processing steps."""
+n_steps=len(self.steps)
+cols=min(5, n_steps)
+rows=(n_steps+cols-1) // cols
+fig, axes=plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
+if rows*cols == 1:axes=np.array([axes])
+if rows == 1:axes=axes.reshape(1, -1)
+elif cols == 1:axes=axes.reshape(-1, 1)
+for i, (description, img) in enumerate(self.steps):r=i // cols
+c=i%cols
+ax=axes[r, c]
+if len(img.shape) == 2:ax.imshow(img, cmap='gray')
+else:ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+ax.set_title(description, fontsize=8)
+ax.axis('off')
+for i in range(len(self.steps), rows*cols):r=i // cols
+c=i%cols
+axes[r, c].axis('off')
+plt.tight_layout()
+plt.show()if __name__ == "__main__":preprocessor=BarcodePreprocessor()
+image_path=filedialog.askopenfilename(
+title="Select an Image",filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])if image_path:image=cv2.imread(image_path)
+if image is not None:processed_image=preprocessor.preprocess_image(image)
+preprocessor.visualize_steps()
+"Foreign object covering part of barcode:didnt detectBlurred image:didnt detectlow contrast,dark image:detected and fixed but with unecessary detection of compressionlow contrast,bright image:detected and fixed but with unecessary detection of compression
+but the eend result has bad openingssalt and pepper:detected and fixed but with unecessary detection of compressionbadly compressed:detected and fixedtilted and part of it cut out:detected and fixed but with unecessary detection of compressionno contrast:very bad fixingfrequency domain problem:i dont like it,bring back the solution from code base 3-----------------------codebase 13: "import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from tkinter import filedialog
+from scipy.signal import find_peaksclass BarcodePreprocessor:def __init__(self):self.steps=[]
+def add_step(self, description, image):"""Save each step for visualization"""
+self.steps.append((description, image.copy()))def estimate_bar_thickness(self, image):"""Estimate barcode bar thickness for pattern-aware processing"""
+# Initial preprocessing to improve estimation
+normalized=cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+blurred=cv2.GaussianBlur(normalized, (3,3), 0)
+# Get vertical gradient
+sobelx=cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=3)
+sobelx=np.abs(sobelx)
+# Find typical bar width using middle portion of image
+widths=[]
+for row in sobelx[sobelx.shape[0]//4:3*sobelx.shape[0]//4]:peaks, _=find_peaks(row, height=np.mean(row))
+if len(peaks)>1:widths.extend(np.diff(peaks))
+if not widths:return 3  # Default fallback
+min_width=max(1, int(np.percentile(widths, 10)))
+pattern_width=max(3, int(np.median(widths)))
+return min_width, pattern_widthdef detect_barcode_region(self, image):"""Find the actual barcode region in the image"""
+# Enhance vertical edges
+sobelx=cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
+gradx=cv2.convertScaleAbs(sobelx)
+# Find regions with high concentration of vertical lines
+blur=cv2.GaussianBlur(gradx, (21,21), 0)
+thresh=cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+# Find connected components
+contours, _=cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+if not contours:return None
+# Filter contours by aspect ratio and vertical line density
+valid_regions=[]
+for contour in contours:x, y, w, h=cv2.boundingRect(contour)
+if w<10 or h<10:  # Too small
+continue
+aspect_ratio=w/float(h)
+roi=gradx[y:y+h, x:x+w]
+edge_density=np.sum(roi>50)/(w*h)
+if 1.5<aspect_ratio<5 and edge_density>0.1:valid_regions.append((x, y, w, h))
+if not valid_regions:return None
+# Return region with highest edge density
+return max(valid_regions, key=lambda r: np.sum(gradx[r[1]:r[1]+r[3], r[0]:r[0]+r[2]]))def detect_image_problems(self, image):"""Enhanced problem detection combining best elements from all versions"""
+problems=[]
+gray=cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image.copy()# Get barcode region for focused analysis
+barcode_region=self.detect_barcode_region(gray)
+if barcode_region is None:return problems
+x, y, w, h=barcode_region
+roi=gray[y:y+h, x:x+w]# Get pattern characteristics
+min_width, pattern_width=self.estimate_bar_thickness(roi)
+# Foreign object detection using pattern analysis
+vertical_profile=np.mean(roi, axis=0)
+horizontal_profile=np.mean(roi, axis=1)
+v_std=np.std(vertical_profile)
+h_std=np.std(horizontal_profile)
+# Look for anomalies considering pattern width
+v_threshold=np.mean(vertical_profile)+2.5*v_std
+h_threshold=np.mean(horizontal_profile)+2.5*h_std
+v_anomalies=np.abs(vertical_profile-np.mean(vertical_profile))>v_threshold
+h_anomalies=np.abs(horizontal_profile-np.mean(horizontal_profile))>h_threshold
+if np.sum(v_anomalies)>min_width or np.sum(h_anomalies)>min_width:problems.append('foreign_object')# Blur detection using gradient analysis
+laplacian_var=cv2.Laplacian(roi, cv2.CV_64F).var()
+edges=cv2.Canny(roi, 50, 150)
+edge_density=np.mean(edges>0)
+if laplacian_var<100 and edge_density<0.15:problems.append('blur')# Contrast detection
+p5, p95=np.percentile(roi, [5, 95])
+if (p95-p5)<80:problems.append('low_contrast')# Salt and pepper detection
+median=cv2.medianBlur(roi, 3)
+noise_diff=np.abs(roi-median)
+if np.percentile(noise_diff, 95)>30:problems.append('salt_pepper')# Frequency domain analysis
+f_transform=np.fft.fft2(roi)
+f_shift=np.fft.fftshift(f_transform)
+magnitude_spectrum=20*np.log(np.abs(f_shift)+1)
+# Check high frequency components
+high_freq_energy=np.mean(magnitude_spectrum[0:magnitude_spectrum.shape[0]//4, :])+\
+np.mean(magnitude_spectrum[-magnitude_spectrum.shape[0]//4:, :])
+if high_freq_energy>45:problems.append('frequency_domain')# Compression artifacts detection
+if np.std(magnitude_spectrum)>45:problems.append('compression_artifacts')# Rotation detection
+lines=cv2.HoughLines(edges, 1, np.pi/180, threshold=min(w, h)//3)
+if lines is not None:angles=[]
+for rho, theta in lines[:, 0]:angle=np.degrees(theta)
+if angle<45:angles.append(angle)
+elif angle>135:angles.append(angle-180)
+if angles and abs(np.median(angles))>5:problems.append('rotation')return problems, barcode_regiondef remove_foreign_object(self, image, barcode_region):"""Remove foreign objects using pattern-aware interpolation"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+min_width, pattern_width=self.estimate_bar_thickness(roi)
+# Get profiles and detect anomalies
+vertical_profile=np.mean(roi, axis=0)
+horizontal_profile=np.mean(roi, axis=1)
+v_std=np.std(vertical_profile)
+h_std=np.std(horizontal_profile)
+v_threshold=np.mean(vertical_profile)+2.5*v_std
+h_threshold=np.mean(horizontal_profile)+2.5*h_std
+v_anomalous=np.abs(vertical_profile-np.mean(vertical_profile))>v_threshold
+h_anomalous=np.abs(horizontal_profile-np.mean(horizontal_profile))>h_threshold
+cleaned=roi.copy()
+# Process vertical anomalies
+for i in range(w):if v_anomalous[i]:left_vals=[]
+right_vals=[]
+# Look for valid pattern within pattern_width distance
+for j in range(max(0, i-pattern_width), i):if not v_anomalous[j]:left_vals.append(roi[:, j])
+for j in range(i+1, min(w, i+pattern_width+1)):if not v_anomalous[j]:right_vals.append(roi[:, j])
+if left_vals and right_vals:# Use average of nearest valid patterns
+cleaned[:, i]=np.mean([left_vals[-1], right_vals[0]], axis=0)
+elif left_vals:cleaned[:, i]=left_vals[-1]
+elif right_vals:cleaned[:, i]=right_vals[0]
+# Process horizontal anomalies
+for i in range(h):if h_anomalous[i]:top_vals=[]
+bottom_vals=[]
+for j in range(max(0, i-pattern_width), i):if not h_anomalous[j]:top_vals.append(cleaned[j, :])
+for j in range(i+1, min(h, i+pattern_width+1)):if not h_anomalous[j]:bottom_vals.append(cleaned[j, :])
+if top_vals and bottom_vals:cleaned[i, :]=np.mean([top_vals[-1], bottom_vals[0]], axis=0)
+elif top_vals:cleaned[i, :]=top_vals[-1]
+elif bottom_vals:cleaned[i, :]=bottom_vals[0]
+result=image.copy()
+result[y:y+h, x:x+w]=cleaned
+return resultdef fix_frequency_domain(self, image, barcode_region):"""Enhanced frequency domain correction"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+f_transform=np.fft.fft2(roi)
+f_shift=np.fft.fftshift(f_transform)
+# Create butterworth high-pass filter
+rows, cols=roi.shape
+crow, ccol=rows//2, cols//2
+u=np.arange(rows)
+v=np.arange(cols)
+u=u.reshape(rows,1)
+u=np.repeat(u, cols, axis=1)
+v=np.repeat(v.reshape(1,cols), rows, axis=0)
+D=np.sqrt((u-crow)**2+(v-ccol)**2)
+n=2  # Filter order
+D0=30  # Cutoff frequency
+H=1/(1+(D0/D)**(2*n))
+f_shift=f_shift*H
+f_ishift=np.fft.ifftshift(f_shift)
+img_back=np.fft.ifft2(f_ishift)
+img_back=np.abs(img_back)
+# Normalize back to uint8
+cleaned=cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+result=image.copy()
+result[y:y+h, x:x+w]=cleaned
+return resultdef fix_blur(self, image, barcode_region):"""Two-stage deblurring"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+# First stage: Unsharp masking
+gaussian=cv2.GaussianBlur(roi, (0, 0), 2)
+unsharp=cv2.addWeighted(roi, 1.5, gaussian, -0.5, 0)
+# Check if more sharpening needed
+laplacian_var=cv2.Laplacian(unsharp, cv2.CV_64F).var()
+if laplacian_var<150:kernel=np.array([[-1,-1,-1],[-1, 9,-1],[-1,-1,-1]])
+unsharp=cv2.filter2D(unsharp, -1, kernel)
+result=image.copy()
+result[y:y+h, x:x+w]=unsharp
+return resultdef fix_contrast(self, image, barcode_region):"""Multi-stage contrast enhancement"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+# First stage: CLAHE
+clahe=cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+enhanced=clahe.apply(roi)
+# Second stage: Adaptive gamma correction
+mean_intensity=np.mean(enhanced)
+if mean_intensity<128:# Dark image: gamma>1
+gamma=1.5
+else:# Bright image: gamma<1
+gamma=0.7
+invGamma=1.0/gamma
+table=np.array([((i/255.0) ** invGamma)*255 for i in range(256)]).astype("uint8")
+enhanced=cv2.LUT(enhanced, table)
+result=image.copy()
+result[y:y+h, x:x+w]=enhanced
+return resultdef remove_salt_pepper(self, image, barcode_region):"""Enhanced salt and pepper removal"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+# Progressive median filtering
+filtered=cv2.medianBlur(roi, 3)
+filtered=cv2.medianBlur(filtered, 5)
+# Check noise level
+noise_level=np.std(filtered-roi)
+if noise_level>30:filtered=cv2.medianBlur(filtered, 3)
+result=image.copy()
+result[y:y+h, x:x+w]=filtered
+return resultdef fix_rotation(self, image, barcode_region):"""Rotation correction with proper padding"""
+x, y, w, h=barcode_region
+roi=image[y:y+h, x:x+w].copy()
+edges=cv2.Canny(roi, 50, 150)
+lines=cv2.HoughLines(edges, 1, np.pi/180, threshold=min(w,h)//3)
+if lines is not None:angles=[]
+for rho, theta in lines[:, 0]:angle=np.degrees(theta)
+if angle<45:angles.append(angle)
+elif angle>135:angles.append(angle-180)
+if angles:median_angle=np.median(angles)
+# Calculate new dimensions post-rotation
+angle_rad=np.radians(abs(median_angle))
+new_w=int(w*abs(np.cos(angle_rad))+h*abs(np.sin(angle_rad)))
+new_h=int(h*abs(np.cos(angle_rad))+w*abs(np.sin(angle_rad)))
+# Add padding before rotation
+pad_x=(new_w-w) // 2
+pad_y=(new_h-h) // 2
+padded=cv2.copyMakeBorder(roi, pad_y, pad_y, pad_x, pad_x,cv2.BORDER_CONSTANT, value=255)
+# Perform rotation
+center=(padded.shape[1] // 2, padded.shape[0] // 2)
+matrix=cv2.getRotationMatrix2D(center, median_angle, 1.0)
+rotated=cv2.warpAffine(padded, matrix, (padded.shape[1], padded.shape[0]),flags=cv2.INTER_CUBIC,borderMode=cv2.BORDER_CONSTANT,borderValue=255)
+# Find the actual barcode region in rotated image
+edges=cv2.Canny(rotated, 50, 150)
+contours, _=cv2.findContours(edges, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+if contours:# Find largest contour with appropriate aspect ratio
+valid_contours=[]
+for contour in contours:x_, y_, w_, h_=cv2.boundingRect(contour)
+aspect_ratio=w_/float(h_)
+if 1.5<aspect_ratio<5:valid_contours.append((x_, y_, w_, h_))
+if valid_contours:x_, y_, w_, h_=max(valid_contours,key=lambda b: b[2]*b[3])
+return rotated[y_:y_+h_, x_:x_+w_]
+return roidef binarize(self, image):"""Improved binarization with hole prevention"""
+# Normalize contrast first
+p2, p98=np.percentile(image, (2, 98))
+normalized=np.interp(image, (p2, p98), (0, 255)).astype(np.uint8)
+# Apply adaptive thresholding with carefully chosen parameters
+binary=cv2.adaptiveThreshold(
+normalized,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,51,  # Slightly smaller window to prevent holes
+7    # Adjusted offset)# Light cleanup without creating holes
+kernel=np.ones((2,2), np.uint8)
+binary=cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+return binarydef preprocess_image(self, image):"""Main preprocessing pipeline"""
+self.steps=[]
+self.add_step("Original Image", image)# Convert to grayscale if needed
+gray=cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape)>2 else image.copy()
+# Detect problems and get barcode region
+problems, barcode_region=self.detect_image_problems(gray)
+self.add_step("Detected Problems: "+", ".join(problems), gray)
+if barcode_region is None:return gray
+processed=gray.copy()
+# Apply fixes in optimal order
+if 'foreign_object' in problems:processed=self.remove_foreign_object(processed, barcode_region)
+self.add_step("Removed Foreign Object", processed)
+if 'frequency_domain' in problems:processed=self.fix_frequency_domain(processed, barcode_region)
+self.add_step("Fixed Frequency Domain", processed)
+if 'salt_pepper' in problems:processed=self.remove_salt_pepper(processed, barcode_region)
+self.add_step("Removed Salt & Pepper", processed)
+if 'blur' in problems:processed=self.fix_blur(processed, barcode_region)
+self.add_step("Fixed Blur", processed)
+if 'low_contrast' in problems:processed=self.fix_contrast(processed, barcode_region)
+self.add_step("Enhanced Contrast", processed)
+# Get updated barcode region after fixes
+_, updated_region=self.detect_image_problems(processed)
+if updated_region is None:updated_region=barcode_region
+# Extract ROI for final processing
+x, y, w, h=updated_region
+roi=processed[y:y+h, x:x+w]
+# Binarize
+binary=self.binarize(roi)
+self.add_step("Binarized", binary)
+# Fix rotation if needed (do this after binarization)
+if 'rotation' in problems:binary=self.fix_rotation(binary, (0, 0, binary.shape[1], binary.shape[0]))
+self.add_step("Fixed Rotation", binary)
+return binarydef visualize_steps(self):"""Enhanced visualization with proper subplot handling"""
+n_steps=len(self.steps)
+cols=min(4, n_steps)
+rows=(n_steps+cols-1) // cols
+fig, axes=plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
+if rows*cols == 1:axes=np.array([axes])
+if rows == 1:axes=axes.reshape(1, -1)
+elif cols == 1:axes=axes.reshape(-1, 1)
+for i, (description, img) in enumerate(self.steps):row=i // cols
+col=i%cols
+ax=axes[row, col]
+if len(img.shape) == 2:ax.imshow(img, cmap='gray')
+else:ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+ax.set_title(description, fontsize=8)
+ax.axis('off')
+# Hide empty subplots
