@@ -1,0 +1,14 @@
+2024-12-20 21:12:34,503 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 21:12:34,516 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 157.62, Std: 70.45
+2024-12-20 21:12:34,523 - BarcodeProcessor - DEBUG - Foreign object detection - V_anomalies: 0, H_anomalies: 0
+2024-12-20 21:12:34,535 - BarcodeProcessor - DEBUG - Blur detection - Laplacian var: 77916.15, Edge density: 0.35
+2024-12-20 21:12:34,538 - BarcodeProcessor - DEBUG - Contrast range: 201.00
+2024-12-20 21:12:34,545 - BarcodeProcessor - DEBUG - Salt & pepper noise level: 249.00
+2024-12-20 21:12:34,575 - BarcodeProcessor - DEBUG - Frequency domain std: 13.03
+2024-12-20 21:12:34,750 - BarcodeProcessor - DEBUG - Detected rotation angle: 0.00
+2024-12-20 21:12:34,751 - BarcodeProcessor - INFO - Detected problems: ['salt_pepper']
+2024-12-20 21:12:34,751 - BarcodeProcessor - INFO - Removing salt & pepper noise
+2024-12-20 21:12:34,765 - BarcodeProcessor - DEBUG - Step: Removed Salt & Pepper - Mean: 155.64, Std: 39.17
+2024-12-20 21:12:34,769 - BarcodeProcessor - DEBUG - Step: Final Result - Mean: 216.88, Std: 90.93
+2024-12-20 21:12:34,770 - BarcodeProcessor - INFO - Preprocessing completed
+2024-12-20 21:12:34,770 - BarcodeProcessor - INFO - Visualizing steps

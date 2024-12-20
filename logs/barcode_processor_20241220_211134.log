@@ -1,0 +1,15 @@
+2024-12-20 21:11:37,686 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 21:11:37,702 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 13.47, Std: 4.44
+2024-12-20 21:11:37,713 - BarcodeProcessor - DEBUG - Foreign object detection - V_anomalies: 0, H_anomalies: 0
+2024-12-20 21:11:37,724 - BarcodeProcessor - DEBUG - Blur detection - Laplacian var: 15.64, Edge density: 0.00
+2024-12-20 21:11:37,727 - BarcodeProcessor - DEBUG - Contrast range: 15.00
+2024-12-20 21:11:37,731 - BarcodeProcessor - DEBUG - Salt & pepper noise level: 3.00
+2024-12-20 21:11:37,768 - BarcodeProcessor - DEBUG - Frequency domain std: 24.91
+2024-12-20 21:11:37,773 - BarcodeProcessor - INFO - Detected problems: ['blur', 'low_contrast']
+2024-12-20 21:11:37,774 - BarcodeProcessor - INFO - Fixing blur
+2024-12-20 21:11:37,783 - BarcodeProcessor - DEBUG - Step: Fixed Blur - Mean: 16.06, Std: 14.38
+2024-12-20 21:11:37,784 - BarcodeProcessor - INFO - Enhancing contrast
+2024-12-20 21:11:37,801 - BarcodeProcessor - DEBUG - Step: Enhanced Contrast - Mean: 52.15, Std: 45.44
+2024-12-20 21:11:37,805 - BarcodeProcessor - DEBUG - Step: Final Result - Mean: 14.82, Std: 59.66
+2024-12-20 21:11:37,805 - BarcodeProcessor - INFO - Preprocessing completed
+2024-12-20 21:11:37,805 - BarcodeProcessor - INFO - Visualizing steps

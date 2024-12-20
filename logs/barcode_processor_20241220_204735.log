@@ -1,0 +1,2 @@
+2024-12-20 20:47:37,498 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 20:47:37,515 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 170.34, Std: 59.96

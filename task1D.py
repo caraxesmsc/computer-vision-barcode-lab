@@ -11,143 +11,109 @@ class BarcodePreprocessor:
     def __init__(self):
         self.steps = []
         self.setup_logging()
+        
+        # Configure detection thresholds
+        self.THRESHOLDS = {
+            'blur': {'laplacian_var': 80, 'edge_density': 0.12},
+            'contrast': {'range_min': 70},
+            'salt_pepper': {'diff_threshold': 40},
+            'compression': {'block_var': 30},
+            'frequency': {'std_threshold': 45},
+            'rotation': {'angle_threshold': 5}
+        }
 
     def setup_logging(self):
         """Setup logging configuration"""
-        # Create logs directory if it doesn't exist
         if not os.path.exists('logs'):
             os.makedirs('logs')
-
-        # Create a unique log file for each run
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = f'logs/barcode_processor_{timestamp}.log'
 
-        # Configure logging
         self.logger = logging.getLogger('BarcodeProcessor')
         self.logger.setLevel(logging.DEBUG)
-
-        # File handler
+        
+        # File handler with detailed logging
         fh = logging.FileHandler(log_file)
         fh.setLevel(logging.DEBUG)
-
-        # Console handler
+        
+        # Console handler with less verbose logging
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO)
-
-        # Formatter
+        
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
-
-        # Add handlers
+        
         self.logger.addHandler(fh)
         self.logger.addHandler(ch)
 
     def add_step(self, description, image):
-        """Save each step for visualization"""
+        """Save each step for visualization with logging"""
         self.steps.append((description, image.copy()))
-        self.logger.info(f"Step added: {description}")
-        self.logger.debug(f"Image shape: {image.shape}, Mean intensity: {np.mean(image):.2f}, Std: {np.std(image):.2f}")
+        mean_val = np.mean(image) if image is not None else 0
+        std_val = np.std(image) if image is not None else 0
+        self.logger.debug(f"Step: {description} - Mean: {mean_val:.2f}, Std: {std_val:.2f}")
 
-    def estimate_bar_thickness(self, image):
-        """Estimate barcode bar thickness using vertical runs of black pixels after binarization"""
-        self.logger.info("Estimating bar thickness...")
-        temp_binary = cv2.adaptiveThreshold(
-            image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 51, 7
-        )
-
-        heights = []
-        for col in range(temp_binary.shape[1]):
-            column = temp_binary[:, col]
-            run_length = 0
-            black_runs = []
-            for val in column:
-                if val == 0:
-                    run_length += 1
-                else:
-                    if run_length > 0:
-                        black_runs.append(run_length)
-                    run_length = 0
-            if run_length > 0:
-                black_runs.append(run_length)
-            if black_runs:
-                heights.extend(black_runs)
-
-        if not heights:
-            self.logger.warning("No bar heights detected, using default values")
-            return 3, 9  # Default fallback
-
-        min_width = max(1, int(np.percentile(heights, 10)))  # 10th percentile for min width
-        pattern_width = max(3, int(np.median(heights)))  # Median for pattern width
-
-        min_width = min(min_width, 10)
-        pattern_width = min(pattern_width, 30)
+    def detect_foreign_object(self, image):
+        """Detect foreign objects using vertical profile analysis"""
+        # Calculate vertical and horizontal profiles
+        vertical_profile = np.mean(image, axis=0)
+        horizontal_profile = np.mean(image, axis=1)
         
-        self.logger.info(f"Estimated min bar width: {min_width}, pattern width: {pattern_width}")
-        return min_width, pattern_width
-
-    def detect_compression_artifacts(self, gray):
-        """Detect compression artifacts using block-based analysis"""
-        self.logger.info("Checking for compression artifacts...")
-        sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        magnitude = np.sqrt(sobelx**2 + sobely**2)
-        block_size = 8
-
-        if magnitude.shape[0] < block_size or magnitude.shape[1] < block_size:
-            self.logger.warning("Image too small for compression artifact detection")
-            return False
-
-        blocks = cv2.boxFilter(magnitude, -1, (block_size, block_size))
-        block_variation = np.std(blocks)
+        # Calculate standard deviations
+        v_std = np.std(vertical_profile)
+        h_std = np.std(horizontal_profile)
         
-        has_artifacts = block_variation > 10
-        self.logger.info(f"Compression artifacts detected: {has_artifacts} (variation: {block_variation:.2f})")
-        return has_artifacts
-
-    def detect_image_problems(self, image):
-        """Detect image problems with detailed logging"""
-        self.logger.info("Starting problem detection...")
-        problems = []
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
-
-        # Blur detection
-        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        edges = cv2.Canny(gray, 50, 150)
+        # Look for anomalous regions
+        v_threshold = np.mean(vertical_profile) + 2.5 * v_std
+        h_threshold = np.mean(horizontal_profile) + 2.5 * h_std
+        
+        v_anomalies = np.abs(vertical_profile - np.mean(vertical_profile)) > v_threshold
+        h_anomalies = np.abs(horizontal_profile - np.mean(horizontal_profile)) > h_threshold
+        
+        # Log findings
+        self.logger.debug(f"Foreign object detection - V_anomalies: {np.sum(v_anomalies)}, H_anomalies: {np.sum(h_anomalies)}")
+        
+        # Return True if significant anomalies found
+        return np.sum(v_anomalies) > 5 or np.sum(h_anomalies) > 5
+        
+    def detect_blur(self, image):
+        """Improved blur detection"""
+        laplacian_var = cv2.Laplacian(image, cv2.CV_64F).var()
+        edges = cv2.Canny(image, 50, 150)
         edge_density = np.mean(edges > 0)
-        if laplacian_var < 90 and edge_density < 0.15:
-            problems.append('blur')
-            self.logger.info(f"Blur detected (Laplacian var: {laplacian_var:.2f}, Edge density: {edge_density:.2f})")
+        
+        self.logger.debug(f"Blur detection - Laplacian var: {laplacian_var:.2f}, Edge density: {edge_density:.2f}")
+        return laplacian_var < self.THRESHOLDS['blur']['laplacian_var']
 
-        # Low contrast detection
-        p5, p95 = np.percentile(gray, [5, 95])
-        if (p95 - p5) < 80:
-            problems.append('low_contrast')
-            self.logger.info(f"Low contrast detected (Range: {p95-p5:.2f})")
+    def detect_low_contrast(self, image):
+        """Improved contrast detection"""
+        p5, p95 = np.percentile(image, [5, 95])
+        contrast_range = p95 - p5
+        self.logger.debug(f"Contrast range: {contrast_range:.2f}")
+        return contrast_range < self.THRESHOLDS['contrast']['range_min']
 
-        # Salt and pepper detection
-        median = cv2.medianBlur(gray, 3)
-        noise_diff = np.abs(gray - median)
+    def detect_salt_pepper(self, image):
+        """Enhanced salt and pepper detection"""
+        median = cv2.medianBlur(image, 3)
+        noise_diff = np.abs(image - median)
         noise_level = np.percentile(noise_diff, 95)
-        if noise_level > 40:
-            problems.append('salt_pepper')
-            self.logger.info(f"Salt & pepper noise detected (Level: {noise_level:.2f})")
+        self.logger.debug(f"Salt & pepper noise level: {noise_level:.2f}")
+        return noise_level > self.THRESHOLDS['salt_pepper']['diff_threshold']
 
-        # Compression artifacts
-        if self.detect_compression_artifacts(gray):
-            problems.append('compression_artifacts')
-
-        # Frequency domain analysis
-        f_transform = np.fft.fft2(gray)
+    def detect_frequency_domain_issues(self, image):
+        """Improved frequency domain analysis"""
+        f_transform = np.fft.fft2(image)
         f_shift = np.fft.fftshift(f_transform)
         magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
-        freq_std = np.std(magnitude_spectrum)
-        if freq_std > 45:
-            problems.append('frequency_domain')
-            self.logger.info(f"Frequency domain issues detected (Std: {freq_std:.2f})")
+        spectrum_std = np.std(magnitude_spectrum)
+        self.logger.debug(f"Frequency domain std: {spectrum_std:.2f}")
+        return spectrum_std > self.THRESHOLDS['frequency']['std_threshold']
 
-        # Rotation detection
-        lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=min(gray.shape) // 3)
+    def detect_rotation(self, image):
+        """Enhanced rotation detection"""
+        edges = cv2.Canny(image, 50, 150)
+        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=min(image.shape)//3)
         if lines is not None:
             angles = []
             for rho, theta in lines[:, 0]:
@@ -156,144 +122,224 @@ class BarcodePreprocessor:
                     angles.append(angle)
                 elif angle > 135:
                     angles.append(angle - 180)
-            if angles and abs(np.median(angles)) > 5:
-                problems.append('rotation')
-                self.logger.info(f"Rotation detected (Median angle: {np.median(angles):.2f})")
+            if angles:
+                median_angle = np.median(angles)
+                self.logger.debug(f"Detected rotation angle: {median_angle:.2f}")
+                return abs(median_angle) > self.THRESHOLDS['rotation']['angle_threshold']
+        return False
 
-        self.logger.info(f"Problems detected: {problems}")
-        return problems
+    def fix_salt_and_pepper(self, image):
+        """Enhanced salt and pepper removal"""
+        self.logger.info("Removing salt & pepper noise")
+        # Progressive median filtering
+        result = cv2.medianBlur(image, 3)
+        result = cv2.medianBlur(result, 5)
+        
+        # Check if more filtering needed
+        noise_level = np.std(result - image)
+        if noise_level > 30:
+            result = cv2.medianBlur(result, 3)
+        
+        return result
 
-    def remove_foreign_object(self, image, min_bar_width):
-        """Remove foreign objects using vertical kernel filtering"""
-        self.logger.info(f"Removing foreign objects (min bar width: {min_bar_width})")
+    def fix_blur(self, image):
+        """Two-stage blur correction"""
+        self.logger.info("Fixing blur")
+        # First stage: Unsharp masking
+        gaussian = cv2.GaussianBlur(image, (0, 0), 3)
+        unsharp = cv2.addWeighted(image, 1.7, gaussian, -0.7, 0)
+        
+        # Second stage: Edge enhancement
+        kernel = np.array([[-1,-1,-1],
+                         [-1, 9,-1],
+                         [-1,-1,-1]])
+        sharpened = cv2.filter2D(unsharp, -1, kernel)
+        
+        return sharpened
 
-        # Create kernels
-        kernel1 = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
-        kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (1, min_bar_width * 10))
-        kernel3 = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1000))
+    def fix_contrast(self, image):
+        """Enhanced contrast correction"""
+        self.logger.info("Enhancing contrast")
+        # CLAHE with careful parameters
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(image)
+        
+        # Preserve black and white points
+        p2, p98 = np.percentile(enhanced, (2, 98))
+        result = np.interp(enhanced, (p2, p98), (0, 255)).astype(np.uint8)
+        
+        return result
 
-        # Multi-stage filtering
-        eroded = cv2.erode(image, kernel1, iterations=2)
-        self.logger.debug("Applied initial erosion")
-
-        dilated1 = cv2.dilate(eroded, kernel1, iterations=2)
-        self.logger.debug("Applied first dilation")
-
-        dilated2 = cv2.dilate(dilated1, kernel2, iterations=1)
-        self.logger.debug("Applied second dilation")
-
-        cleaned = cv2.dilate(dilated2, kernel3, iterations=1)
-        self.logger.debug("Applied final dilation")
-
-        return cleaned
+    def fix_rotation(self, image):
+        """Rotation correction with proper padding"""
+        self.logger.info("Correcting rotation")
+        edges = cv2.Canny(image, 50, 150)
+        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=50)
+        
+        if lines is not None:
+            angles = []
+            for rho, theta in lines[:, 0]:
+                angle = np.degrees(theta)
+                if angle < 45:
+                    angles.append(angle)
+                elif angle > 135:
+                    angles.append(angle - 180)
+                    
+            if angles:
+                median_angle = np.median(angles)
+                rows, cols = image.shape
+                center = (cols/2, rows/2)
+                M = cv2.getRotationMatrix2D(center, median_angle, 1.0)
+                
+                # Calculate new dimensions
+                cos = np.abs(M[0, 0])
+                sin = np.abs(M[0, 1])
+                new_w = int((rows * sin) + (cols * cos))
+                new_h = int((rows * cos) + (cols * sin))
+                
+                # Adjust transformation matrix
+                M[0, 2] += (new_w/2) - center[0]
+                M[1, 2] += (new_h/2) - center[1]
+                
+                # Apply rotation with border replication
+                rotated = cv2.warpAffine(image, M, (new_w, new_h), 
+                                       flags=cv2.INTER_CUBIC,
+                                       borderMode=cv2.BORDER_REPLICATE)
+                return rotated
+        
+        return image
 
     def fix_frequency_domain(self, image):
-        """Fix frequency domain issues"""
-        self.logger.info("Applying frequency domain fix")
+        """Enhanced frequency domain correction"""
+        self.logger.info("Fixing frequency domain issues")
         f_transform = np.fft.fft2(image)
         f_shift = np.fft.fftshift(f_transform)
         
         rows, cols = image.shape
         crow, ccol = rows//2, cols//2
+        
+        # Create high-pass filter
         mask = np.ones((rows, cols), np.uint8)
         r = 30
+        center = [crow, ccol]
         x, y = np.ogrid[:rows, :cols]
-        mask_area = (x - crow)**2 + (y - ccol)**2 <= r*r
+        mask_area = (x - center[0])**2 + (y - center[1])**2 <= r*r
         mask[mask_area] = 0
         
+        # Apply filter
         f_shift = f_shift * mask
         f_ishift = np.fft.ifftshift(f_shift)
         img_back = np.fft.ifft2(f_ishift)
         img_back = np.abs(img_back)
         
         result = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        self.logger.debug("Frequency domain fix applied")
         return result
 
-    def fix_blur(self, image):
-        """Fix blur using two-stage approach"""
-        self.logger.info("Fixing blur")
-        # First stage
-        denoised = cv2.medianBlur(image, 3)
-        blurred = cv2.GaussianBlur(denoised, (3, 3), 0)
-        self.logger.debug("Applied initial denoising")
+    def remove_foreign_object(self, image):
+        """Remove foreign objects using advanced vertical filtering"""
+        self.logger.info("Removing foreign objects")
         
-        # Second stage
-        gaussian = cv2.GaussianBlur(blurred, (0, 0), 2)
-        unsharp = cv2.addWeighted(blurred, 1.5, gaussian, -0.5, 0)
-        self.logger.debug("Applied unsharp masking")
+        # Initial bar width estimation
+        edges = cv2.Canny(image, 50, 150)
+        vertical_lines = cv2.HoughLinesP(edges, 1, np.pi/180, 30, minLineLength=20, maxLineGap=10)
         
-        return unsharp
-
-    def fix_contrast(self, image):
-        """Fix contrast using CLAHE and normalization"""
-        self.logger.info("Enhancing contrast")
-        p2, p98 = np.percentile(image, (2, 98))
-        normalized = np.interp(image, (p2, p98), (0, 255)).astype(np.uint8)
-        self.logger.debug(f"Normalized contrast range: {p2:.2f} - {p98:.2f}")
+        if vertical_lines is not None:
+            widths = []
+            for line in vertical_lines:
+                x1, y1, x2, y2 = line[0]
+                if abs(x2 - x1) < 10:  # Nearly vertical lines
+                    widths.append(abs(x2 - x1))
+            if widths:
+                bar_width = max(3, int(np.median(widths)))
+            else:
+                bar_width = 5
+        else:
+            bar_width = 5
+            
+        self.logger.debug(f"Estimated bar width: {bar_width}")
         
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(normalized)
-        self.logger.debug("Applied CLAHE enhancement")
+        # Create multiple kernels of increasing size
+        kernel1 = np.ones((image.shape[0], bar_width)) / image.shape[0]
+        kernel2 = np.ones((image.shape[0], bar_width * 3)) / image.shape[0]
+        kernel3 = np.ones((image.shape[0], bar_width * 5)) / image.shape[0]
         
-        return enhanced
-
-    def final_cleanup(self, binary, min_bar_width):
-        """Final cleanup using vertical pattern averaging"""
-        self.logger.info("Performing final cleanup")
-        kernel = np.ones((binary.shape[0], min_bar_width)) / binary.shape[0]
-        cleaned = np.zeros_like(binary)
+        # Progressive filtering
+        cleaned1 = cv2.filter2D(image, -1, kernel1)
+        cleaned2 = cv2.filter2D(cleaned1, -1, kernel2)
+        cleaned3 = cv2.filter2D(cleaned2, -1, kernel3)
         
-        for i in range(0, binary.shape[1] - min_bar_width + 1):
-            region = binary[:, i:i+min_bar_width]
-            vertical_avg = np.mean(region, axis=0)
-            cleaned[:, i:i+min_bar_width] = (vertical_avg > 127).astype(np.uint8) * 255
+        # Remove horizontal noise
+        horizontal_kernel = np.ones((bar_width, 1)) / bar_width
+        final_clean = cv2.filter2D(cleaned3, -1, horizontal_kernel)
         
-        self.logger.debug("Applied vertical pattern averaging")
-        return cleaned
+        # Restore binary image
+        _, result = cv2.threshold(final_clean, 127, 255, cv2.THRESH_BINARY)
+        
+        return result
 
     def preprocess_image(self, image):
-        """Main preprocessing pipeline with logging"""
-        self.logger.info("Starting image preprocessing")
+        """Main preprocessing pipeline"""
+        self.logger.info("Starting preprocessing pipeline")
         self.steps = []
         self.add_step("Original Image", image)
-
-        # Initial grayscale conversion
+        
+        # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
         
-        # Problem detection
-        problems = self.detect_image_problems(gray)
-        min_bar_width, _ = self.estimate_bar_thickness(gray)
+        # Detect problems
+        problems = []
+        if self.detect_foreign_object(gray):
+            problems.append('foreign_object')
+        if self.detect_blur(gray):
+            problems.append('blur')
+        if self.detect_low_contrast(gray):
+            problems.append('low_contrast')
+        if self.detect_salt_pepper(gray):
+            problems.append('salt_pepper')
+        if self.detect_frequency_domain_issues(gray):
+            problems.append('frequency_domain')
+        if self.detect_rotation(gray):
+            problems.append('rotation')
+            
+        self.logger.info(f"Detected problems: {problems}")
         
         processed = gray.copy()
-
-        # Apply fixes based on detected problems
+        
+        # Apply fixes in order
+        if 'rotation' in problems:
+            processed = self.fix_rotation(processed)
+            self.add_step("Fixed Rotation", processed)
+            
         if 'foreign_object' in problems:
-            processed = self.remove_foreign_object(processed, min_bar_width)
+            processed = self.remove_foreign_object(processed)
             self.add_step("Removed Foreign Object", processed)
-
+            
         if 'frequency_domain' in problems:
             processed = self.fix_frequency_domain(processed)
             self.add_step("Fixed Frequency Domain", processed)
-
+            
+        if 'salt_pepper' in problems:
+            processed = self.fix_salt_and_pepper(processed)
+            self.add_step("Removed Salt & Pepper", processed)
+            
         if 'blur' in problems:
             processed = self.fix_blur(processed)
             self.add_step("Fixed Blur", processed)
-
+            
         if 'low_contrast' in problems:
             processed = self.fix_contrast(processed)
             self.add_step("Enhanced Contrast", processed)
-
+            
         # Final cleanup
-        cleaned = self.final_cleanup(processed, min_bar_width)
-        self.add_step("Final Cleanup", cleaned)
-
-        self.logger.info("Image preprocessing completed")
-        return cleaned
+        _, binary = cv2.threshold(processed, 127, 255, cv2.THRESH_BINARY)
+        self.add_step("Final Result", binary)
+        
+        self.logger.info("Preprocessing completed")
+        return binary
 
     def visualize_steps(self):
         """Visualize processing steps"""
-        self.logger.info("Visualizing processing steps")
+        self.logger.info("Visualizing steps")
         n_steps = len(self.steps)
         cols = min(4, n_steps)
         rows = (n_steps + cols - 1) // cols
@@ -319,14 +365,12 @@ class BarcodePreprocessor:
             ax.set_title(description, fontsize=8)
             ax.axis('off')
             
-        # Hide empty subplots
         for i in range(len(self.steps), rows * cols):
             row = i // cols
             col = i % cols
             axes[row, col].axis('off')
             
         plt.tight_layout()
-        plt.savefig('steps.png')  # Save visualization
         plt.show()
 
 if __name__ == "__main__":
