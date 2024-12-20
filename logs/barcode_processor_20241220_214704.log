@@ -1,0 +1,20 @@
+2024-12-20 21:47:06,970 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 21:47:06,982 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 196.08, Std: 36.95
+2024-12-20 21:47:07,004 - BarcodeProcessor - DEBUG - Foreign object detection - Row anomalies: 29, Col anomalies: 43, Local anomalies: False
+2024-12-20 21:47:07,012 - BarcodeProcessor - DEBUG - Blur detection - Laplacian var: 1354.54, Edge density: 0.05
+2024-12-20 21:47:07,016 - BarcodeProcessor - DEBUG - Contrast range: 128.00
+2024-12-20 21:47:07,020 - BarcodeProcessor - DEBUG - Salt & pepper noise level: 231.00
+2024-12-20 21:47:07,050 - BarcodeProcessor - DEBUG - Frequency domain std: 26.02
+2024-12-20 21:47:07,062 - BarcodeProcessor - DEBUG - Hough Lines rotation angle: 0.00
+2024-12-20 21:47:07,063 - BarcodeProcessor - DEBUG - Contour analysis rotation angle: 90.00
+2024-12-20 21:47:07,063 - BarcodeProcessor - INFO - Detected problems: ['foreign_object', 'salt_pepper', 'rotation']
+2024-12-20 21:47:07,063 - BarcodeProcessor - INFO - Correcting rotation
+2024-12-20 21:47:07,137 - BarcodeProcessor - DEBUG - Step: Fixed Rotation - Mean: 196.48, Std: 36.17
+2024-12-20 21:47:07,137 - BarcodeProcessor - INFO - Removing foreign objects
+2024-12-20 21:47:07,150 - BarcodeProcessor - DEBUG - Estimated bar width: 3
+2024-12-20 21:47:07,196 - BarcodeProcessor - DEBUG - Step: Removed Foreign Object - Mean: 255.00, Std: 0.00
+2024-12-20 21:47:07,196 - BarcodeProcessor - INFO - Removing salt & pepper noise
+2024-12-20 21:47:07,207 - BarcodeProcessor - DEBUG - Step: Removed Salt & Pepper - Mean: 255.00, Std: 0.00
+2024-12-20 21:47:07,212 - BarcodeProcessor - DEBUG - Step: Final Result - Mean: 255.00, Std: 0.00
+2024-12-20 21:47:07,212 - BarcodeProcessor - INFO - Preprocessing completed
+2024-12-20 21:47:07,212 - BarcodeProcessor - INFO - Visualizing steps

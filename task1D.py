@@ -12,14 +12,14 @@ class BarcodePreprocessor:
         self.steps = []
         self.setup_logging()
         
-        # Configure detection thresholds
+        # Adjusted thresholds based on test cases
         self.THRESHOLDS = {
-            'blur': {'laplacian_var': 80, 'edge_density': 0.12},
-            'contrast': {'range_min': 70},
-            'salt_pepper': {'diff_threshold': 40},
-            'compression': {'block_var': 30},
-            'frequency': {'std_threshold': 45},
-            'rotation': {'angle_threshold': 5}
+            'blur': {'laplacian_var': 50, 'edge_density': 0.08},  # More sensitive blur detection
+            'contrast': {'range_min': 50},  # Lower threshold for contrast issues
+            'salt_pepper': {'diff_threshold': 30},  # More sensitive noise detection
+            'compression': {'block_var': 20},  # Lower threshold for compression artifacts
+            'frequency': {'std_threshold': 35},  # More sensitive frequency domain detection
+            'rotation': {'angle_threshold': 3}  # More sensitive rotation detection
         }
 
     def setup_logging(self):
@@ -55,27 +55,47 @@ class BarcodePreprocessor:
         self.logger.debug(f"Step: {description} - Mean: {mean_val:.2f}, Std: {std_val:.2f}")
 
     def detect_foreign_object(self, image):
-        """Detect foreign objects using vertical profile analysis"""
-        # Calculate vertical and horizontal profiles
-        vertical_profile = np.mean(image, axis=0)
-        horizontal_profile = np.mean(image, axis=1)
-        
-        # Calculate standard deviations
-        v_std = np.std(vertical_profile)
-        h_std = np.std(horizontal_profile)
-        
-        # Look for anomalous regions
-        v_threshold = np.mean(vertical_profile) + 2.5 * v_std
-        h_threshold = np.mean(horizontal_profile) + 2.5 * h_std
-        
-        v_anomalies = np.abs(vertical_profile - np.mean(vertical_profile)) > v_threshold
-        h_anomalies = np.abs(horizontal_profile - np.mean(horizontal_profile)) > h_threshold
-        
-        # Log findings
-        self.logger.debug(f"Foreign object detection - V_anomalies: {np.sum(v_anomalies)}, H_anomalies: {np.sum(h_anomalies)}")
-        
-        # Return True if significant anomalies found
-        return np.sum(v_anomalies) > 5 or np.sum(h_anomalies) > 5
+        """Enhanced foreign object detection using multiple analysis methods"""
+        # Initial preprocessing to enhance vertical lines
+        blurred = cv2.GaussianBlur(image, (3,3), 0)
+        sobely = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=3)
+        abs_sobel = np.absolute(sobely)
+        scaled_sobel = np.uint8(255 * abs_sobel / np.max(abs_sobel))
+
+        # Get row-wise statistics
+        row_means = np.mean(scaled_sobel, axis=1)
+        row_std = np.std(row_means)
+        row_thresh = np.mean(row_means) + 2 * row_std
+
+        # Get column-wise statistics
+        col_means = np.mean(scaled_sobel, axis=0)
+        col_std = np.std(col_means)
+        col_thresh = np.mean(col_means) + 2 * col_std
+
+        # Detect anomalies
+        row_anomalies = np.where(row_means > row_thresh)[0]
+        col_anomalies = np.where(col_means > col_thresh)[0]
+
+        # Additional check for localized intensity changes
+        local_anomalies = False
+        kernel_size = min(image.shape[0]//10, 20)  # Adaptive kernel size
+        if kernel_size > 2:
+            local_means = np.array([np.mean(image[i:i+kernel_size, :]) 
+                                  for i in range(0, image.shape[0]-kernel_size, kernel_size)])
+            local_std = np.std(local_means)
+            local_thresh = np.mean(local_means) + 2 * local_std
+            local_anomalies = np.any(np.abs(local_means - np.mean(local_means)) > local_thresh)
+
+        # Log detection results
+        self.logger.debug(f"Foreign object detection - Row anomalies: {len(row_anomalies)}, "
+                         f"Col anomalies: {len(col_anomalies)}, Local anomalies: {local_anomalies}")
+
+        # Determine if foreign object is present based on multiple criteria
+        has_foreign_object = (len(row_anomalies) > image.shape[0]//20 or  # More than 5% of rows affected
+                            len(col_anomalies) > image.shape[1]//20 or  # More than 5% of columns affected
+                            local_anomalies)                            # Local intensity anomalies detected
+
+        return has_foreign_object
         
     def detect_blur(self, image):
         """Improved blur detection"""
@@ -111,9 +131,12 @@ class BarcodePreprocessor:
         return spectrum_std > self.THRESHOLDS['frequency']['std_threshold']
 
     def detect_rotation(self, image):
-        """Enhanced rotation detection"""
+        """Enhanced rotation detection using multiple methods"""
+        # Method 1: Hough Lines
         edges = cv2.Canny(image, 50, 150)
-        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=min(image.shape)//3)
+        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=min(image.shape)//4)
+        
+        rotation_detected = False
         if lines is not None:
             angles = []
             for rho, theta in lines[:, 0]:
@@ -124,9 +147,24 @@ class BarcodePreprocessor:
                     angles.append(angle - 180)
             if angles:
                 median_angle = np.median(angles)
-                self.logger.debug(f"Detected rotation angle: {median_angle:.2f}")
-                return abs(median_angle) > self.THRESHOLDS['rotation']['angle_threshold']
-        return False
+                rotation_detected = abs(median_angle) > self.THRESHOLDS['rotation']['angle_threshold']
+                self.logger.debug(f"Hough Lines rotation angle: {median_angle:.2f}")
+        
+        # Method 2: Connected Components Analysis
+        if not rotation_detected:
+            _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                largest_contour = max(contours, key=cv2.contourArea)
+                if cv2.contourArea(largest_contour) > 100:  # Minimum area threshold
+                    rect = cv2.minAreaRect(largest_contour)
+                    angle = rect[-1]
+                    if angle < -45:
+                        angle = 90 + angle
+                    rotation_detected = abs(angle) > self.THRESHOLDS['rotation']['angle_threshold']
+                    self.logger.debug(f"Contour analysis rotation angle: {angle:.2f}")
+        
+        return rotation_detected
 
     def fix_salt_and_pepper(self, image):
         """Enhanced salt and pepper removal"""

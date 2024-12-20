@@ -1,0 +1,14 @@
+2024-12-20 21:48:20,978 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 21:48:20,992 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 170.34, Std: 59.96
+2024-12-20 21:48:21,012 - BarcodeProcessor - DEBUG - Foreign object detection - Row anomalies: 0, Col anomalies: 0, Local anomalies: False
+2024-12-20 21:48:21,022 - BarcodeProcessor - DEBUG - Blur detection - Laplacian var: 853.75, Edge density: 0.04
+2024-12-20 21:48:21,025 - BarcodeProcessor - DEBUG - Contrast range: 176.00
+2024-12-20 21:48:21,029 - BarcodeProcessor - DEBUG - Salt & pepper noise level: 2.00
+2024-12-20 21:48:21,059 - BarcodeProcessor - DEBUG - Frequency domain std: 18.49
+2024-12-20 21:48:21,077 - BarcodeProcessor - DEBUG - Contour analysis rotation angle: 90.00
+2024-12-20 21:48:21,077 - BarcodeProcessor - INFO - Detected problems: ['rotation']
+2024-12-20 21:48:21,077 - BarcodeProcessor - INFO - Correcting rotation
+2024-12-20 21:48:21,155 - BarcodeProcessor - DEBUG - Step: Fixed Rotation - Mean: 170.34, Std: 59.96
+2024-12-20 21:48:21,157 - BarcodeProcessor - DEBUG - Step: Final Result - Mean: 182.04, Std: 115.24
+2024-12-20 21:48:21,158 - BarcodeProcessor - INFO - Preprocessing completed
+2024-12-20 21:48:21,158 - BarcodeProcessor - INFO - Visualizing steps

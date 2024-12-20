@@ -1,0 +1,18 @@
+2024-12-20 21:45:30,217 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-20 21:45:30,231 - BarcodeProcessor - DEBUG - Step: Original Image - Mean: 236.45, Std: 53.54
+2024-12-20 21:45:30,251 - BarcodeProcessor - DEBUG - Foreign object detection - Row anomalies: 22, Col anomalies: 45, Local anomalies: False
+2024-12-20 21:45:30,259 - BarcodeProcessor - DEBUG - Blur detection - Laplacian var: 253.43, Edge density: 0.03
+2024-12-20 21:45:30,262 - BarcodeProcessor - DEBUG - Contrast range: 170.00
+2024-12-20 21:45:30,265 - BarcodeProcessor - DEBUG - Salt & pepper noise level: 0.00
+2024-12-20 21:45:30,296 - BarcodeProcessor - DEBUG - Frequency domain std: 30.68
+2024-12-20 21:45:30,307 - BarcodeProcessor - DEBUG - Hough Lines rotation angle: 0.00
+2024-12-20 21:45:30,308 - BarcodeProcessor - DEBUG - Contour analysis rotation angle: 90.00
+2024-12-20 21:45:30,308 - BarcodeProcessor - INFO - Detected problems: ['foreign_object', 'rotation']
+2024-12-20 21:45:30,308 - BarcodeProcessor - INFO - Correcting rotation
+2024-12-20 21:45:30,361 - BarcodeProcessor - DEBUG - Step: Fixed Rotation - Mean: 236.45, Std: 53.54
+2024-12-20 21:45:30,361 - BarcodeProcessor - INFO - Removing foreign objects
+2024-12-20 21:45:30,370 - BarcodeProcessor - DEBUG - Estimated bar width: 3
+2024-12-20 21:45:30,403 - BarcodeProcessor - DEBUG - Step: Removed Foreign Object - Mean: 255.00, Std: 0.00
+2024-12-20 21:45:30,406 - BarcodeProcessor - DEBUG - Step: Final Result - Mean: 255.00, Std: 0.00
+2024-12-20 21:45:30,406 - BarcodeProcessor - INFO - Preprocessing completed
+2024-12-20 21:45:30,406 - BarcodeProcessor - INFO - Visualizing steps
