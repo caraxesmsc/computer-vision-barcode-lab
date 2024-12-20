@@ -1,0 +1,35 @@
+Foreign object covering part of barcode: 
+ failed drastically
+
+
+Blurred image:
+ 
+midway it was perfect at "Cropped Barcode" then it got fucked at the "Removed Foreign Objects" so fail
+
+low contrast , dark image:
+ midway it was perfect at "Cropped Barcode" then it got fucked at the "Removed Foreign Objects" so fail
+
+low contrast , bright image: 
+ midway it was perfect at "Cropped Barcode" then it got fucked at the "Removed Foreign Objects" so fail
+ 
+
+
+salt and pepper: 
+ midway it was perfect at "enhanced barcode" then it got fucked at the "cropped barcode" so fail
+ 
+
+badly compressed:
+ midway it was perfect at "Cropped Barcode" then it got fucked at the "Removed Foreign Objects" so fail
+ 
+
+tilted and part of it cut out: 
+ midway it was okay  at "fixed rotation" it actually rotated it correctly but it incorrectly cropped it and after that it got so fucked so fail
+ 
+
+no contrast: 
+ 
+midway it was perfect at "Cropped Barcode" then it got fucked at the "Removed Foreign Objects" so fail
+
+frequency domain problem: 
+ super fail all steps fucked upp 
+ 
