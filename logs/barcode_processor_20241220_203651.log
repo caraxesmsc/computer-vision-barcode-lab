@@ -1,0 +1,15 @@
+2024-12-20 20:36:53,621 - BarcodeProcessor - INFO - Starting image preprocessing
+2024-12-20 20:36:53,623 - BarcodeProcessor - INFO - Step added: Original Image
+2024-12-20 20:36:53,639 - BarcodeProcessor - DEBUG - Image shape: (600, 800, 3), Mean intensity: 236.45, Std: 53.54
+2024-12-20 20:36:53,650 - BarcodeProcessor - INFO - Starting problem detection...
+2024-12-20 20:36:53,667 - BarcodeProcessor - INFO - Checking for compression artifacts...
+2024-12-20 20:36:53,692 - BarcodeProcessor - INFO - Compression artifacts detected: True (variation: 117.28)
+2024-12-20 20:36:53,745 - BarcodeProcessor - INFO - Problems detected: ['compression_artifacts']
+2024-12-20 20:36:53,747 - BarcodeProcessor - INFO - Estimating bar thickness...
+2024-12-20 20:36:54,608 - BarcodeProcessor - INFO - Estimated min bar width: 4, pattern width: 8
+2024-12-20 20:36:54,608 - BarcodeProcessor - INFO - Performing final cleanup
+2024-12-20 20:36:54,640 - BarcodeProcessor - DEBUG - Applied vertical pattern averaging
+2024-12-20 20:36:54,640 - BarcodeProcessor - INFO - Step added: Final Cleanup
+2024-12-20 20:36:54,644 - BarcodeProcessor - DEBUG - Image shape: (600, 800), Mean intensity: 255.00, Std: 0.00
+2024-12-20 20:36:54,644 - BarcodeProcessor - INFO - Image preprocessing completed
+2024-12-20 20:36:54,644 - BarcodeProcessor - INFO - Visualizing processing steps

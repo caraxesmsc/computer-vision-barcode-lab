@@ -1,0 +1,27 @@
+2024-12-20 20:37:57,278 - BarcodeProcessor - INFO - Starting image preprocessing
+2024-12-20 20:37:57,280 - BarcodeProcessor - INFO - Step added: Original Image
+2024-12-20 20:37:57,293 - BarcodeProcessor - DEBUG - Image shape: (600, 800, 3), Mean intensity: 253.61, Std: 4.10
+2024-12-20 20:37:57,299 - BarcodeProcessor - INFO - Starting problem detection...
+2024-12-20 20:37:57,307 - BarcodeProcessor - INFO - Blur detected (Laplacian var: 12.34, Edge density: 0.00)
+2024-12-20 20:37:57,311 - BarcodeProcessor - INFO - Low contrast detected (Range: 14.00)
+2024-12-20 20:37:57,315 - BarcodeProcessor - INFO - Checking for compression artifacts...
+2024-12-20 20:37:57,331 - BarcodeProcessor - INFO - Compression artifacts detected: False (variation: 9.26)
+2024-12-20 20:37:57,367 - BarcodeProcessor - INFO - Problems detected: ['blur', 'low_contrast']
+2024-12-20 20:37:57,368 - BarcodeProcessor - INFO - Estimating bar thickness...
+2024-12-20 20:37:58,251 - BarcodeProcessor - INFO - Estimated min bar width: 2, pattern width: 4
+2024-12-20 20:37:58,252 - BarcodeProcessor - INFO - Fixing blur
+2024-12-20 20:37:58,252 - BarcodeProcessor - DEBUG - Applied initial denoising
+2024-12-20 20:37:58,253 - BarcodeProcessor - DEBUG - Applied unsharp masking
+2024-12-20 20:37:58,253 - BarcodeProcessor - INFO - Step added: Fixed Blur
+2024-12-20 20:37:58,257 - BarcodeProcessor - DEBUG - Image shape: (600, 800), Mean intensity: 253.57, Std: 4.15
+2024-12-20 20:37:58,257 - BarcodeProcessor - INFO - Enhancing contrast
+2024-12-20 20:37:58,265 - BarcodeProcessor - DEBUG - Normalized contrast range: 240.00 - 255.00
+2024-12-20 20:37:58,266 - BarcodeProcessor - DEBUG - Applied CLAHE enhancement
+2024-12-20 20:37:58,267 - BarcodeProcessor - INFO - Step added: Enhanced Contrast
+2024-12-20 20:37:58,270 - BarcodeProcessor - DEBUG - Image shape: (600, 800), Mean intensity: 231.48, Std: 67.99
+2024-12-20 20:37:58,270 - BarcodeProcessor - INFO - Performing final cleanup
+2024-12-20 20:37:58,301 - BarcodeProcessor - DEBUG - Applied vertical pattern averaging
+2024-12-20 20:37:58,301 - BarcodeProcessor - INFO - Step added: Final Cleanup
+2024-12-20 20:37:58,305 - BarcodeProcessor - DEBUG - Image shape: (600, 800), Mean intensity: 255.00, Std: 0.00
+2024-12-20 20:37:58,305 - BarcodeProcessor - INFO - Image preprocessing completed
+2024-12-20 20:37:58,305 - BarcodeProcessor - INFO - Visualizing processing steps
