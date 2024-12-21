@@ -1,0 +1,351 @@
+Foreign object covering part of barcode: 
+ 
+Barcode region not detected in Pipeline 1.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 293.86
+Detailed Metrics:
+  edge_score: 446.46
+  contrast_score: 255.00
+  pattern_score: 68.57
+  noise_score: 250.65
+
+Pipeline 2:
+Overall Quality Score: 1106.47
+Detailed Metrics:
+  edge_score: 2346.04
+  contrast_score: 255.00
+  pattern_score: 341.36
+  noise_score: 232.80
+
+Pipeline 3:
+Overall Quality Score: 1147.47
+Detailed Metrics:
+  edge_score: 2446.36
+  contrast_score: 255.00
+  pattern_score: 345.96
+  noise_score: 232.30
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1147.47
+
+Visualization saved as 'pipeline_comparison.png'
+--------------------------------------
+Pipeline 1:very bad 
+Pipeline 2: did not fix the problem
+Pipeline 3: did not fix the problem
+Winner selection: since all are bad , no comment
+General Comment:
+---------------------------------------------------
+Blurred image:
+  log:
+Barcode region not detected in Pipeline 1.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 98.58
+Detailed Metrics:
+  edge_score: 29.41
+  contrast_score: 170.00
+  pattern_score: 52.24
+  noise_score: 253.72
+
+Pipeline 2:
+Overall Quality Score: 1200.73
+Detailed Metrics:
+  edge_score: 2559.02
+  contrast_score: 255.00
+  pattern_score: 387.98
+  noise_score: 230.26
+
+Pipeline 3:
+Overall Quality Score: 1280.31
+Detailed Metrics:
+  edge_score: 2757.31
+  contrast_score: 255.00
+  pattern_score: 389.51
+  noise_score: 229.80
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1280.31
+
+Visualization saved as 'pipeline_comparison.png'
+
+--------------------------------------
+Pipeline 1: very bad
+Pipeline 2: BEst , it cleaned perfectly without opepnig too much
+Pipeline 3: had unnecessary openings so it should lose
+Winner selection: Failed , as it chose 3 over 2
+General Comment: make the winner selection also based on bar width comparison 
+---------------------------------------------------
+
+low contrast , dark image:
+  log:
+Barcode region not detected in Pipeline 1.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 31.18
+Detailed Metrics:
+  edge_score: 1.03
+  contrast_score: 15.00
+  pattern_score: 3.93
+  noise_score: 254.77
+
+Pipeline 2:
+Overall Quality Score: 1197.72
+Detailed Metrics:
+  edge_score: 2555.64
+  contrast_score: 255.00
+  pattern_score: 379.56
+  noise_score: 230.57
+
+Pipeline 3:
+Overall Quality Score: 1217.02
+Detailed Metrics:
+  edge_score: 2602.92
+  contrast_score: 255.00
+  pattern_score: 381.59
+  noise_score: 230.40
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1217.02
+
+Visualization saved as 'pipeline_comparison.png'
+
+--------------------------------------  
+Pipeline 1: very bad 
+Pipeline 2: perfect
+Pipeline 3:perfect
+Winner selection: good
+General Comment:
+---------------------------------------------------
+
+low contrast , bright image: 
+    log: 
+Barcode region not detected in Pipeline 1.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 30.81
+Detailed Metrics:
+  edge_score: 0.93
+  contrast_score: 14.00
+  pattern_score: 3.78
+  noise_score: 254.80
+
+Pipeline 2:
+Overall Quality Score: 1226.28
+Detailed Metrics:
+  edge_score: 2618.33
+  contrast_score: 255.00
+  pattern_score: 397.36
+  noise_score: 229.80
+
+Pipeline 3:
+Overall Quality Score: 1243.05
+Detailed Metrics:
+  edge_score: 2662.25
+  contrast_score: 255.00
+  pattern_score: 393.40
+  noise_score: 229.65
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1243.05
+
+Visualization saved as 'pipeline_comparison.png'
+--------------------------------------
+Pipeline 1: cleaned the image but not cropped
+Pipeline 2: perfect but needs averaging filter at end because the borders are not good
+Pipeline 3: cleaned but with abit much openings compared to 2
+Winner selection: bad decision should be 2
+General Comment:
+---------------------------------------------------
+ 
+salt and pepper: 
+    log:
+Barcode region not detected in Pipeline 2.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 85.24
+Detailed Metrics:
+  edge_score: 145.27
+  contrast_score: 0.00
+  pattern_score: 8.72
+  noise_score: 253.85
+
+Pipeline 2:
+Overall Quality Score: 3250.23
+Detailed Metrics:
+  edge_score: 7826.70
+  contrast_score: 201.00
+  pattern_score: 189.68
+  noise_score: 213.07
+
+Pipeline 3:
+Overall Quality Score: 2140.25
+Detailed Metrics:
+  edge_score: 4969.22
+  contrast_score: 255.00
+  pattern_score: 267.23
+  noise_score: 226.19
+
+Winning Pipeline: Pipeline 2
+Winning Score: 3250.23
+
+Visualization saved as 'pipeline_comparison.png'
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 
+
+badly compressed:
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment: ALl failed to clean and all failed to detect barcode region and did not crop
+---------------------------------------------------
+ 
+
+tilted and part of it cut out: 
+    log:
+Barcode region not detected in Pipeline 1.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 96.56
+Detailed Metrics:
+  edge_score: 67.25
+  contrast_score: 124.00
+  pattern_score: 35.74
+  noise_score: 253.17
+
+Pipeline 2:
+Overall Quality Score: 1246.74
+Detailed Metrics:
+  edge_score: 2676.99
+  contrast_score: 255.00
+  pattern_score: 382.11
+  noise_score: 230.16
+
+Pipeline 3:
+Overall Quality Score: 1260.19
+Detailed Metrics:
+  edge_score: 2709.94
+  contrast_score: 255.00
+  pattern_score: 383.58
+  noise_score: 230.03
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1260.19
+
+Visualization saved as 'pipeline_comparison.png'
+--------------------------------------
+Pipeline 1: bad not cleaned nor cropped
+Pipeline 2: good 
+Pipeline 3: good 
+Winner selection: okay
+General Comment: needs more work because the results were not a perfect barcode line rather some problems was still there so i think an averaging filter will do good
+---------------------------------------------------
+ 
+
+no contrast: 
+    log:
+Barcode region not detected in Pipeline 1.
+Barcode region not detected in Pipeline 2.
+
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 27.72
+Detailed Metrics:
+  edge_score: 0.08
+  contrast_score: 6.00
+  pattern_score: 1.98
+  noise_score: 254.94
+
+Pipeline 2:
+Overall Quality Score: 27.79
+Detailed Metrics:
+  edge_score: 0.12
+  contrast_score: 6.00
+  pattern_score: 2.24
+  noise_score: 254.91
+
+Pipeline 3:
+Overall Quality Score: 326.73
+Detailed Metrics:
+  edge_score: 527.62
+  contrast_score: 255.00
+  pattern_score: 70.79
+  noise_score: 250.26
+
+Winning Pipeline: Pipeline 3
+Winning Score: 326.73
+
+Visualization saved as 'pipeline_comparison.png'
+
+--------------------------------------
+Pipeline 1: cleaned a bit but not good , and no cropping 
+Pipeline 2: no steps made , fail
+Pipeline 3: perfetc cleaning but no cropping
+Winner selection: good selection
+General Comment:
+---------------------------------------------------
+
+
+frequency domain problem: 
+    log: 
+=== Pipeline Processing Statistics ===
+
+Pipeline 1:
+Overall Quality Score: 566.44
+Detailed Metrics:
+  edge_score: 1140.71
+  contrast_score: 255.00
+  pattern_score: 44.62
+  noise_score: 247.28
+
+Pipeline 2:
+Overall Quality Score: 936.98
+Detailed Metrics:
+  edge_score: 2010.59
+  contrast_score: 255.00
+  pattern_score: 159.76
+  noise_score: 242.87
+
+Pipeline 3:
+Overall Quality Score: 1542.46
+Detailed Metrics:
+  edge_score: 3486.49
+  contrast_score: 255.00
+  pattern_score: 239.26
+  noise_score: 235.16
+
+Winning Pipeline: Pipeline 3
+Winning Score: 1542.46
+
+Visualization saved as 'pipeline_comparison.png'
+--------------------------------------
+Pipeline 1: bad 
+Pipeline 2: bad 
+Pipeline 3: best cleaning 
+Winner selection: okay
+General Comment: the barcode is rotated too , so it should have fixed this problem then cropped 
+---------------------------------------------------
+ 
