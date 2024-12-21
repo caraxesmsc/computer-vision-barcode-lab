@@ -319,16 +319,16 @@ class BarcodeProcessor:
         elif cols == 1:
             axes = axes.reshape(-1, 1)
             
-        for i, (description, img) in enumerate(self.steps):
-            row = i // cols
-            col = i % cols
-            ax = axes[row, col]
-            if len(img.shape) == 2:
-                ax.imshow(img, cmap='gray')
-            else:
-                ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            ax.set_title(description, fontsize=8)
-            ax.axis('off')
+            for i, (description, img) in enumerate(self.steps):
+                row = i // cols
+                col = i % cols
+                ax = axes[row, col]
+                if len(img.shape) == 2:
+                    ax.imshow(img, cmap='gray')
+                else:
+                    ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                ax.set_title(description, fontsize=8)
+                ax.axis('off')
 
         # Hide empty subplots
         for i in range(len(self.steps), rows * cols):
