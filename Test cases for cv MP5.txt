@@ -1,0 +1,95 @@
+Foreign object covering part of barcode: 
+ 
+log:
+--------------------------------------
+Pipeline 1: 
+Pipeline 2: 
+Pipeline 3:  
+Winner selection:  
+General Comment:
+---------------------------------------------------
+Blurred image:
+  log:
+
+--------------------------------------
+Pipeline 1:  
+Pipeline 2: 
+Pipeline 3:  
+Winner selection:  
+General Comment: 
+---------------------------------------------------
+
+low contrast , dark image:
+  log:
+--------------------------------------  
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+
+low contrast , bright image: 
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 
+salt and pepper: 
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 
+
+badly compressed:
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 
+
+tilted and part of it cut out: 
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 
+
+no contrast: 
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+
+
+frequency domain problem: 
+    log:
+--------------------------------------
+Pipeline 1:
+Pipeline 2:
+Pipeline 3:
+Winner selection:
+General Comment:
+---------------------------------------------------
+ 

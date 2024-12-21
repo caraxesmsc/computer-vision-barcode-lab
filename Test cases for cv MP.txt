@@ -1,85 +1,22 @@
 Foreign object covering part of barcode: 
  
-Barcode region not detected in Pipeline 1.
-
-=== Pipeline Processing Statistics ===
-
-Pipeline 1:
-Overall Quality Score: 293.86
-Detailed Metrics:
-  edge_score: 446.46
-  contrast_score: 255.00
-  pattern_score: 68.57
-  noise_score: 250.65
-
-Pipeline 2:
-Overall Quality Score: 1106.47
-Detailed Metrics:
-  edge_score: 2346.04
-  contrast_score: 255.00
-  pattern_score: 341.36
-  noise_score: 232.80
-
-Pipeline 3:
-Overall Quality Score: 1147.47
-Detailed Metrics:
-  edge_score: 2446.36
-  contrast_score: 255.00
-  pattern_score: 345.96
-  noise_score: 232.30
-
-Winning Pipeline: Pipeline 3
-Winning Score: 1147.47
-
-Visualization saved as 'pipeline_comparison.png'
+log:
 --------------------------------------
-Pipeline 1:very bad 
-Pipeline 2: did not fix the problem
-Pipeline 3: did not fix the problem
-Winner selection: since all are bad , no comment
+Pipeline 1: 
+Pipeline 2: 
+Pipeline 3:  
+Winner selection:  
 General Comment:
 ---------------------------------------------------
 Blurred image:
   log:
-Barcode region not detected in Pipeline 1.
-
-=== Pipeline Processing Statistics ===
-
-Pipeline 1:
-Overall Quality Score: 98.58
-Detailed Metrics:
-  edge_score: 29.41
-  contrast_score: 170.00
-  pattern_score: 52.24
-  noise_score: 253.72
-
-Pipeline 2:
-Overall Quality Score: 1200.73
-Detailed Metrics:
-  edge_score: 2559.02
-  contrast_score: 255.00
-  pattern_score: 387.98
-  noise_score: 230.26
-
-Pipeline 3:
-Overall Quality Score: 1280.31
-Detailed Metrics:
-  edge_score: 2757.31
-  contrast_score: 255.00
-  pattern_score: 389.51
-  noise_score: 229.80
-
-Winning Pipeline: Pipeline 3
-Winning Score: 1280.31
-
-Visualization saved as 'pipeline_comparison.png'
 
 --------------------------------------
-Pipeline 1: very bad
-Pipeline 2: BEst , it cleaned perfectly without opepnig too much
-Pipeline 3: had unnecessary openings so it should lose
-Winner selection: Failed , as it chose 3 over 2
-General Comment: make the winner selection also based on bar width comparison 
+Pipeline 1:  
+Pipeline 2: 
+Pipeline 3:  
+Winner selection:  
+General Comment: 
 ---------------------------------------------------
 
 low contrast , dark image:
