@@ -1,95 +1,213 @@
 Foreign object covering part of barcode: 
  
 log:
+2024-12-21 21:12:48,648 - INFO - Running Pipeline 1...
+2024-12-21 21:12:48,940 - ERROR - Error in fix_rotation: OpenCV(4.10.0) :-1: error: (-5:Bad argument) in function 'warpAffine'
+> Overload resolution failed:
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+
+2024-12-21 21:12:48,996 - INFO - Pipeline 1 completed with score: 208.60
+2024-12-21 21:12:48,996 - INFO - Running Pipeline 2...
+2024-12-21 21:12:49,028 - INFO - Pipeline 2 completed with score: 281.46
+2024-12-21 21:12:49,028 - INFO - Running Pipeline 3...
+2024-12-21 21:12:49,077 - INFO - Pipeline 3 completed with score: 140.55
+2024-12-21 21:12:49,077 - INFO - Best result: Pipeline 2 (score: 281.46)
+2024-12-21 21:12:51,131 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
 --------------------------------------
-Pipeline 1: 
-Pipeline 2: 
-Pipeline 3:  
-Winner selection:  
-General Comment:
+Pipeline 1: alot of openings and not fixed the average because it average the full image not the cropped one 
+Pipeline 2: didn't fx the proplem
+Pipeline 3:  correctly  detected the barcode region cropped without removing the are that needs correction but it didn't correct it
+Winner selection:  meh
+General Comment: averaging filter with kernel dimensions of either the least bar width or 1 pixel width and height is the bar height which is same for all bars 
 ---------------------------------------------------
 Blurred image:
-  log:
+  log:  
+2024-12-21 21:15:46,736 - INFO - Running Pipeline 1...
+2024-12-21 21:15:46,931 - ERROR - Error in fix_rotation: OpenCV(4.10.0) :-1: error: (-5:Bad argument) in function 'warpAffine'
+> Overload resolution failed:
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+
+2024-12-21 21:15:46,971 - INFO - Pipeline 1 completed with score: 109.74
+2024-12-21 21:15:46,971 - INFO - Running Pipeline 2...
+2024-12-21 21:15:46,995 - INFO - Pipeline 2 completed with score: 76.51
+2024-12-21 21:15:46,995 - INFO - Running Pipeline 3...
+2024-12-21 21:15:47,039 - INFO - Pipeline 3 completed with score: 162.36
+2024-12-21 21:15:47,039 - INFO - Best result: Pipeline 3 (score: 162.36)
+2024-12-21 21:15:49,042 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
+
 
 --------------------------------------
-Pipeline 1:  
-Pipeline 2: 
-Pipeline 3:  
-Winner selection:  
+Pipeline 1:  opened too much
+Pipeline 2: perfect
+Pipeline 3:  midway good but was inverted for some reason , so fail
+Winner selection:  fail because 2 is better
 General Comment: 
 ---------------------------------------------------
 
 low contrast , dark image:
-  log:
+  log: 
+2024-12-21 21:17:01,685 - INFO - Running Pipeline 1...
+2024-12-21 21:17:01,744 - INFO - Pipeline 1 completed with score: 309.52
+2024-12-21 21:17:01,745 - INFO - Running Pipeline 2...
+2024-12-21 21:17:01,770 - INFO - Pipeline 2 completed with score: 32.43
+2024-12-21 21:17:01,770 - INFO - Running Pipeline 3...
+2024-12-21 21:17:01,810 - INFO - Pipeline 3 completed with score: 127.10
+2024-12-21 21:17:01,810 - INFO - Best result: Pipeline 1 (score: 309.52)
+2024-12-21 21:17:03,222 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
+
+[Done] exited with code=0 in 5.416 seconds
 --------------------------------------  
-Pipeline 1:
-Pipeline 2:
-Pipeline 3:
-Winner selection:
+Pipeline 1: it cleaned it but didn't crip
+Pipeline 2: perfect
+Pipeline 3: bad because it inverted it 
+Winner selection: fail because 2 is better
 General Comment:
 ---------------------------------------------------
 
 low contrast , bright image: 
     log:
+2024-12-21 21:18:08,463 - INFO - Running Pipeline 1...
+2024-12-21 21:18:08,518 - INFO - Pipeline 1 completed with score: 295.35
+2024-12-21 21:18:08,518 - INFO - Running Pipeline 2...
+2024-12-21 21:18:08,547 - INFO - Pipeline 2 completed with score: 36.12
+2024-12-21 21:18:08,547 - INFO - Running Pipeline 3...
+2024-12-21 21:18:08,593 - INFO - Pipeline 3 completed with score: 132.86
+2024-12-21 21:18:08,593 - INFO - Best result: Pipeline 1 (score: 295.35)
+2024-12-21 21:18:10,064 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
 --------------------------------------
-Pipeline 1:
-Pipeline 2:
-Pipeline 3:
-Winner selection:
+
+Pipeline 1: it cleaned it but didn't crip
+Pipeline 2: perfect
+Pipeline 3: bad because it inverted it 
+Winner selection: fail because 2 is better
 General Comment:
+
 ---------------------------------------------------
  
 salt and pepper: 
     log:
+2024-12-21 21:18:51,911 - INFO - Running Pipeline 1...
+2024-12-21 21:18:51,925 - WARNING - No barcode region detected in Pipeline1
+2024-12-21 21:18:51,960 - INFO - Pipeline 1 completed with score: 3250.23
+2024-12-21 21:18:51,960 - INFO - Running Pipeline 2...
+2024-12-21 21:18:51,999 - INFO - Pipeline 2 completed with score: 3250.23
+2024-12-21 21:18:51,999 - INFO - Running Pipeline 3...
+2024-12-21 21:18:52,039 - INFO - Pipeline 3 completed with score: 3250.23
+2024-12-21 21:18:52,039 - INFO - Best result: Pipeline 1 (score: 3250.23)
+2024-12-21 21:18:53,157 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
+
 --------------------------------------
 Pipeline 1:
 Pipeline 2:
 Pipeline 3:
 Winner selection:
-General Comment:
+General Comment: ALL FAILED
 ---------------------------------------------------
  
 
 badly compressed:
     log:
+2024-12-21 21:27:52,352 - INFO - Running Pipeline 1...
+2024-12-21 21:27:52,614 - ERROR - Error in fix_rotation: OpenCV(4.10.0) :-1: error: (-5:Bad argument) in function 'warpAffine'
+> Overload resolution failed:
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+
+2024-12-21 21:27:52,667 - INFO - Pipeline 1 completed with score: 87.08
+2024-12-21 21:27:52,667 - INFO - Running Pipeline 2...
+2024-12-21 21:27:52,706 - INFO - Pipeline 2 completed with score: 110.72
+2024-12-21 21:27:52,706 - INFO - Running Pipeline 3...
+2024-12-21 21:27:52,761 - INFO - Pipeline 3 completed with score: 125.01
+2024-12-21 21:27:52,761 - INFO - Best result: Pipeline 3 (score: 125.01)
+2024-12-21 21:27:54,718 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
+
 --------------------------------------
-Pipeline 1:
-Pipeline 2:
-Pipeline 3:
-Winner selection:
+Pipeline 1: inverted the barcode region so failed
+Pipeline 2: good but needs binarization 
+Pipeline 3: inverted
+Winner selection: failed , should be 2
 General Comment:
 ---------------------------------------------------
  
-
 tilted and part of it cut out: 
-    log:
+    log: 
+2024-12-21 21:30:16,452 - INFO - Running Pipeline 1...
+2024-12-21 21:30:16,499 - INFO - Pipeline 1 completed with score: 149.27
+2024-12-21 21:30:16,499 - INFO - Running Pipeline 2...
+2024-12-21 21:30:16,523 - INFO - Pipeline 2 completed with score: 200.33
+2024-12-21 21:30:16,523 - INFO - Running Pipeline 3...
+2024-12-21 21:30:16,547 - INFO - Pipeline 3 completed with score: 200.33
+2024-12-21 21:30:16,547 - INFO - Best result: Pipeline 2 (score: 200.33)
+2024-12-21 21:30:18,224 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
 --------------------------------------
 Pipeline 1:
 Pipeline 2:
 Pipeline 3:
 Winner selection:
-General Comment:
+General Comment:All failed
 ---------------------------------------------------
  
 
 no contrast: 
     log:
+2024-12-21 21:30:16,452 - INFO - Running Pipeline 1...
+2024-12-21 21:30:16,499 - INFO - Pipeline 1 completed with score: 149.27
+2024-12-21 21:30:16,499 - INFO - Running Pipeline 2...
+2024-12-21 21:30:16,523 - INFO - Pipeline 2 completed with score: 200.33
+2024-12-21 21:30:16,523 - INFO - Running Pipeline 3...
+2024-12-21 21:30:16,547 - INFO - Pipeline 3 completed with score: 200.33
+2024-12-21 21:30:16,547 - INFO - Best result: Pipeline 2 (score: 200.33)
+2024-12-21 21:30:18,224 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
 --------------------------------------
 Pipeline 1:
 Pipeline 2:
 Pipeline 3:
 Winner selection:
-General Comment:
+General Comment: All failed
 ---------------------------------------------------
 
 
 frequency domain problem: 
-    log:
+    log: 
+2024-12-21 21:31:35,173 - INFO - Running Pipeline 1...
+2024-12-21 21:31:35,427 - ERROR - Error in fix_rotation: OpenCV(4.10.0) :-1: error: (-5:Bad argument) in function 'warpAffine'
+> Overload resolution failed:
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+>  - Can't parse 'dsize'. Sequence item with index 1 has a wrong type
+
+2024-12-21 21:31:35,469 - INFO - Pipeline 1 completed with score: 491.28
+2024-12-21 21:31:35,469 - INFO - Running Pipeline 2...
+2024-12-21 21:31:35,499 - INFO - Pipeline 2 completed with score: 117.63
+2024-12-21 21:31:35,499 - INFO - Running Pipeline 3...
+2024-12-21 21:31:35,563 - INFO - Pipeline 3 completed with score: 229.50
+2024-12-21 21:31:35,563 - INFO - Best result: Pipeline 1 (score: 491.28)
+2024-12-21 21:31:37,291 - INFO - Results saved to results.png
+
+Visualization saved as 'pipeline_comparison.png'
+
 --------------------------------------
-Pipeline 1:
-Pipeline 2:
-Pipeline 3:
-Winner selection:
-General Comment:
+Pipeline 1: failed
+Pipeline 2: failed
+Pipeline 3: good correction but inverted and not rotated 
+Winner selection: failed 
+General Comment: 
 ---------------------------------------------------
  
