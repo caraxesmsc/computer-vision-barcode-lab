@@ -1,0 +1,8 @@
+2024-12-21 02:25:46,762 - BarcodeProcessor - DEBUG - [add_step] - Step: Original Image - Quality Metrics: {<ImageQualityMetric.CONTRAST: 1>: 0.5019607843137255, <ImageQualityMetric.SHARPNESS: 2>: 1.0, <ImageQualityMetric.NOISE: 3>: 0.7257557916666666, <ImageQualityMetric.PATTERN_CONSISTENCY: 4>: 1.0}
+2024-12-21 02:25:46,771 - BarcodeProcessor - INFO - [preprocess_image] - Starting preprocessing pipeline
+2024-12-21 02:25:46,818 - BarcodeProcessor - INFO - [detect_barcode_region] - Found barcode region: (224, 328, 407, 209)
+2024-12-21 02:25:46,836 - BarcodeProcessor - DEBUG - [remove_foreign_object] - Estimated bar width: 4
+2024-12-21 02:25:46,909 - BarcodeProcessor - DEBUG - [add_step] - Step: Fixed blur - Quality Metrics: {<ImageQualityMetric.CONTRAST: 1>: 0.8431372549019608, <ImageQualityMetric.SHARPNESS: 2>: 1.0, <ImageQualityMetric.NOISE: 3>: 0.0, <ImageQualityMetric.PATTERN_CONSISTENCY: 4>: 1.0}
+2024-12-21 02:25:46,917 - BarcodeProcessor - DEBUG - [add_step] - Step: Binarized - Quality Metrics: {<ImageQualityMetric.CONTRAST: 1>: 1.0, <ImageQualityMetric.SHARPNESS: 2>: 1.0, <ImageQualityMetric.NOISE: 3>: 0.9959836826822472, <ImageQualityMetric.PATTERN_CONSISTENCY: 4>: 1.0}
+2024-12-21 02:25:46,939 - BarcodeProcessor - DEBUG - [add_step] - Step: Final Cleanup - Quality Metrics: {<ImageQualityMetric.CONTRAST: 1>: 1.0, <ImageQualityMetric.SHARPNESS: 2>: 1.0, <ImageQualityMetric.NOISE: 3>: 0.7087024910948356, <ImageQualityMetric.PATTERN_CONSISTENCY: 4>: 1.0}
+2024-12-21 02:25:46,941 - BarcodeProcessor - INFO - [preprocess_image] - Overall quality improvement: 1.15x

@@ -1,0 +1,4 @@
+2024-12-21 02:21:45,352 - BarcodeProcessor - DEBUG - [add_step] - Step: Original Image - Quality Metrics: {<ImageQualityMetric.CONTRAST: 1>: 1.0, <ImageQualityMetric.SHARPNESS: 2>: 1.0, <ImageQualityMetric.NOISE: 3>: 0.80199325, <ImageQualityMetric.PATTERN_CONSISTENCY: 4>: 1.0}
+2024-12-21 02:21:45,359 - BarcodeProcessor - INFO - [preprocess_image] - Starting preprocessing pipeline
+2024-12-21 02:21:45,389 - BarcodeProcessor - WARNING - [detect_barcode_region] - No valid barcode regions found
+2024-12-21 02:21:45,389 - BarcodeProcessor - WARNING - [preprocess_image] - No barcode region detected
