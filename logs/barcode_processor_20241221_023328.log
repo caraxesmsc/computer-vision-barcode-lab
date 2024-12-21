@@ -1,0 +1,2 @@
+2024-12-21 02:33:31,342 - BarcodeProcessor - DEBUG - [add_step] - Added step: Original Image
+2024-12-21 02:33:31,381 - BarcodeProcessor - WARNING - [preprocess_image] - No barcode region detected
