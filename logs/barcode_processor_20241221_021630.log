@@ -1,0 +1,19 @@
+2024-12-21 02:16:34,371 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-21 02:16:34,372 - BarcodeProcessor - DEBUG - Added step: Original Image
+2024-12-21 02:16:34,380 - BarcodeProcessor - INFO - Performing initial cleanup
+2024-12-21 02:16:34,382 - BarcodeProcessor - DEBUG - Added step: Initial Enhancement
+2024-12-21 02:16:34,416 - BarcodeProcessor - INFO - Comparing results from Foreign Object
+2024-12-21 02:16:34,429 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 396.52, Contrast: 255.00, Edge: 50.40
+2024-12-21 02:16:34,430 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 174.70, Contrast: 255.00, Edge: 36.62
+2024-12-21 02:16:34,430 - BarcodeProcessor - DEBUG - Quality scores - Previous: 245.19, New: 153.71
+2024-12-21 02:16:34,430 - BarcodeProcessor - INFO - Foreign Object: Keeping previous result
+2024-12-21 02:16:34,446 - BarcodeProcessor - INFO - Comparing results from Frequency
+2024-12-21 02:16:34,457 - BarcodeProcessor - INFO - Frequency: Keeping previous result (found barcode region)
+2024-12-21 02:16:34,458 - BarcodeProcessor - INFO - Comparing results from Contrast
+2024-12-21 02:16:34,471 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 396.52, Contrast: 255.00, Edge: 50.40
+2024-12-21 02:16:34,474 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 390.30, Contrast: 251.00, Edge: 50.40
+2024-12-21 02:16:34,474 - BarcodeProcessor - DEBUG - Quality scores - Previous: 245.19, New: 241.50
+2024-12-21 02:16:34,474 - BarcodeProcessor - INFO - Contrast: Keeping previous result
+2024-12-21 02:16:34,484 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 396.52, Contrast: 255.00, Edge: 50.40
+2024-12-21 02:16:34,487 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 408.00, Contrast: 255.00, Edge: 35.31
+2024-12-21 02:16:34,487 - BarcodeProcessor - DEBUG - Added step: Final Result

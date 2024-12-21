@@ -1,0 +1,23 @@
+2024-12-21 02:14:09,913 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-21 02:14:09,914 - BarcodeProcessor - DEBUG - Added step: Original Image
+2024-12-21 02:14:09,923 - BarcodeProcessor - INFO - Performing initial cleanup
+2024-12-21 02:14:09,925 - BarcodeProcessor - DEBUG - Added step: Initial Enhancement
+2024-12-21 02:14:09,957 - BarcodeProcessor - INFO - Comparing results from Foreign Object
+2024-12-21 02:14:09,977 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 124.61, Contrast: 255.00, Edge: 24.37
+2024-12-21 02:14:09,977 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 138.19, Contrast: 255.00, Edge: 26.32
+2024-12-21 02:14:09,977 - BarcodeProcessor - DEBUG - Quality scores - Previous: 131.22, New: 137.04
+2024-12-21 02:14:09,977 - BarcodeProcessor - INFO - Foreign Object: Keeping previous result
+2024-12-21 02:14:09,978 - BarcodeProcessor - INFO - Comparing results from Frequency
+2024-12-21 02:14:09,998 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 124.61, Contrast: 255.00, Edge: 24.37
+2024-12-21 02:14:09,999 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 138.19, Contrast: 255.00, Edge: 26.32
+2024-12-21 02:14:09,999 - BarcodeProcessor - DEBUG - Quality scores - Previous: 131.22, New: 137.04
+2024-12-21 02:14:09,999 - BarcodeProcessor - INFO - Frequency: Keeping previous result
+2024-12-21 02:14:10,000 - BarcodeProcessor - INFO - Comparing results from Contrast
+2024-12-21 02:14:10,020 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 124.61, Contrast: 255.00, Edge: 24.37
+2024-12-21 02:14:10,020 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 124.61, Contrast: 255.00, Edge: 24.37
+2024-12-21 02:14:10,020 - BarcodeProcessor - DEBUG - Quality scores - Previous: 131.22, New: 131.22
+2024-12-21 02:14:10,020 - BarcodeProcessor - INFO - Contrast: Keeping previous result
+2024-12-21 02:14:10,021 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 124.61, Contrast: 255.00, Edge: 24.37
+2024-12-21 02:14:10,021 - BarcodeProcessor - DEBUG - Quality scores - Vertical: 0.00, Contrast: 0.00, Edge: 0.00
+2024-12-21 02:14:10,021 - BarcodeProcessor - DEBUG - Added step: Final Cleanup
+2024-12-21 02:14:10,022 - BarcodeProcessor - DEBUG - Added step: Final Result

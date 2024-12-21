@@ -1,0 +1,4 @@
+2024-12-21 02:16:10,357 - BarcodeProcessor - INFO - Starting preprocessing pipeline
+2024-12-21 02:16:10,357 - BarcodeProcessor - DEBUG - Added step: Original Image
+2024-12-21 02:16:10,367 - BarcodeProcessor - INFO - Performing initial cleanup
+2024-12-21 02:16:10,369 - BarcodeProcessor - DEBUG - Added step: Initial Enhancement
