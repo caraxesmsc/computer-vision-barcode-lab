@@ -1,0 +1,609 @@
+here is codebase 38:
+"import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from tkinter import filedialog
+from scipy.signal import find_peaks
+
+class BarcodePreprocessor:
+def init(self):
+self.steps = []
+self.min_bar_width = None
+self.pattern_width = None
+
+def add_step(self, description, image):
+    self.steps.append((description, image.copy()))
+
+def estimate_bar_thickness(self, image):
+    normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+    blurred = cv2.GaussianBlur(normalized, (3, 3), 0)
+    sobelx = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=3)
+    sobelx = np.abs(sobelx)
+
+    widths = []
+    for row in sobelx[sobelx.shape[0]//4:3*sobelx.shape[0]//4]:
+        peaks, _ = find_peaks(row, height=np.mean(row))
+        if len(peaks) > 1:
+            widths.extend(np.diff(peaks))
+
+    if not widths:
+        return 1, 3
+
+    min_width = max(1, int(np.percentile(widths, 10)))
+    pattern_width = max(3, int(np.median(widths)))
+
+    return min(min_width, 3), min(pattern_width, 9)
+
+def detect_barcode_region(self, image):
+    sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
+    gradx = cv2.convertScaleAbs(sobelx)
+    blur = cv2.GaussianBlur(gradx, (21, 21), 0)
+    thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    valid_regions = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if w < 20 or h < 10:
+            continue
+        aspect_ratio = w / float(h)
+        roi = gradx[y:y + h, x:x + w]
+        edge_density = np.sum(roi > 50) / (w * h)
+        if 1.5 < aspect_ratio < 5 and edge_density > 0.1:
+            valid_regions.append((x, y, w, h))
+
+    if not valid_regions:
+        return None
+
+    largest = max(valid_regions, key=lambda r: r[2] * r[3])
+    return largest
+
+def detect_image_problems(self, image):
+    problems = []
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
+
+    barcode_region = self.detect_barcode_region(gray)
+    if barcode_region is None:
+        return problems, (0, 0, gray.shape[1], gray.shape[0])
+
+    x, y, w, h = barcode_region
+    roi = gray[y:y+h, x:x+w]
+
+    # Get pattern info first
+    self.min_bar_width, self.pattern_width = self.estimate_bar_thickness(roi)
+
+    # Foreign object detection
+    vertical_profile = np.mean(roi, axis=0)
+    v_std = np.std(vertical_profile)
+    v_mean = np.mean(vertical_profile)
+    if np.any(np.abs(vertical_profile - v_mean) > 2.5 * v_std):
+        problems.append('foreign_object')
+
+    # Rotation detection (do this early)
+    edges = cv2.Canny(roi, 50, 150)
+    coords = np.column_stack(np.where(edges > 0))
+    if len(coords) > 0:
+        angle = cv2.minAreaRect(coords)[-1]
+        if abs(angle) > 5:
+            problems.append('rotation')
+
+    # Blur detection
+    laplacian_var = cv2.Laplacian(roi, cv2.CV_64F).var()
+    if laplacian_var < 80:
+        problems.append('blur')
+
+    # Low contrast
+    p5, p95 = np.percentile(roi, [5, 95])
+    if (p95 - p5) < 50:
+        problems.append('low_contrast')
+
+    # Salt and pepper
+    median_blurred = cv2.medianBlur(roi, 3)
+    noise_diff = np.abs(roi - median_blurred)
+    if np.mean(noise_diff) > 10:
+        problems.append('salt_pepper')
+
+    # Frequency domain
+    f_transform = np.fft.fft2(roi)
+    f_shift = np.fft.fftshift(f_transform)
+    magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
+    if np.std(magnitude_spectrum) > 45:
+        problems.append('frequency_domain')
+
+    return problems, barcode_region
+
+def remove_foreign_object(self, image, barcode_region):
+    x, y, w, h = barcode_region
+    roi = image[y:y+h, x:x+w].copy()
+
+    # Get vertical profile
+    vertical_profile = np.mean(roi, axis=0)
+    v_std = np.std(vertical_profile)
+    v_mean = np.mean(vertical_profile)
+
+    # Get smallest bar width
+    min_bar_width, _ = self.estimate_bar_thickness(roi)
+    min_bar_width = min(min_bar_width, 3)
+
+    # Create vertical kernel
+    kernel = np.ones((h, min_bar_width)) / h
+
+    # Detect anomalies
+    anomalies = np.abs(vertical_profile - v_mean) > 2.5 * v_std
+
+    # Apply vertical averaging only on anomalous regions
+    cleaned = roi.copy()
+    for i in range(w - min_bar_width + 1):
+        if anomalies[i]:
+            region = roi[:, i:i+min_bar_width]
+            avg_val = np.mean(region, axis=0)
+            cleaned[:, i:i+min_bar_width] = np.tile(avg_val, (h, 1))
+
+    result = image.copy()
+    result[y:y+h, x:x+w] = cleaned
+    return result
+
+def remove_salt_pepper(self, image, barcode_region):
+    x, y, w, h = barcode_region
+    roi = image[y:y+h, x:x+w].copy()
+
+    # Progressive median filtering
+    result = cv2.medianBlur(roi, 3)
+    result = cv2.medianBlur(result, 5)
+    noise_level = np.std(result - roi)
+    if noise_level > 30:
+        result = cv2.medianBlur(result, 3)
+
+    result_img = image.copy()
+    result_img[y:y+h, x:x+w] = result
+    return result_img
+
+def fix_rotation(self, image):
+    edges = cv2.Canny(image, 50, 150, apertureSize=3)
+    lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
+    if lines is not None:
+        angles = []
+        for rho, theta in lines[:, 0]:
+            angle = np.degrees(theta)
+            if angle < 45:
+                angles.append(angle)
+            elif angle > 135:
+                angles.append(angle - 180)
+        if angles:
+            median_angle = np.median(angles)
+            rows, cols = image.shape
+            matrix = cv2.getRotationMatrix2D((cols/2, rows/2), median_angle, 1)
+            return cv2.warpAffine(image, matrix, (cols, rows),
+                                flags=cv2.INTER_CUBIC,
+                                borderMode=cv2.BORDER_CONSTANT,
+                                borderValue=255)
+    return image
+
+def fix_contrast(self, image, barcode_region):
+    x, y, w, h = barcode_region
+    roi = image[y:y+h, x:x+w].copy()
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(roi)
+
+    result = image.copy()
+    result[y:y+h, x:x+w] = enhanced
+    return result
+
+def fix_blur(self, image, barcode_region):
+    x, y, w, h = barcode_region
+    roi = image[y:y+h, x:x+w].copy()
+
+    # Single pass gentle unsharp masking
+    gaussian = cv2.GaussianBlur(roi, (0, 0), 2)
+    unsharp = cv2.addWeighted(roi, 1.3, gaussian, -0.3, 0)
+
+    return unsharp
+
+def fix_frequency_domain(self, image, barcode_region):
+    x, y, w, h = barcode_region
+    roi = image[y:y+h, x:x+w].copy()
+
+    f_transform = np.fft.fft2(roi)
+    f_shift = np.fft.fftshift(f_transform)
+    rows, cols = roi.shape
+    crow, ccol = rows//2, cols//2
+
+    # Create high-pass filter mask
+    mask = np.ones((rows, cols), np.uint8)
+    r = 30
+    x_grid, y_grid = np.ogrid[:rows, :cols]
+    mask_area = (x_grid - crow)**2 + (y_grid - ccol)**2 <= r*r
+    mask[mask_area] = 0
+
+    f_shift = f_shift * mask
+    f_ishift = np.fft.ifftshift(f_shift)
+    img_back = np.fft.ifft2(f_ishift)
+    img_back = np.abs(img_back)
+
+    cleaned = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    result = image.copy()
+    result[y:y+h, x:x+w] = cleaned
+    return result
+
+def binarize(self, image):
+    p2, p98 = np.percentile(image, (2, 98))
+    normalized = np.interp(image, (p2, p98), (0, 255)).astype(np.uint8)
+
+    binary = cv2.adaptiveThreshold(
+        normalized, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        41,  # Smaller window
+        5
+    )
+
+    kernel = np.ones((2,2), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    return binary
+
+def find_optimal_crop(self, binary):
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return binary
+
+    # Find largest contour
+    largest = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(largest)
+
+    # Add padding
+    pad_y_top = int(0.05 * h)
+    pad_y_bottom = int(0.2 * h)  # More padding for numbers
+    pad_x = int(0.05 * w)
+
+    # Ensure we don't exceed image boundaries
+    x = max(0, x - pad_x)
+    y = max(0, y - pad_y_top)
+    w = min(binary.shape[1] - x, w + 2*pad_x)
+    h = min(binary.shape[0] - y, h + pad_y_top + pad_y_bottom)
+
+    return binary[y:y+h, x:x+w]
+
+def final_cleanup(self, binary):
+    min_width = 1  # Always use 1-pixel width
+    h = binary.shape[0]
+
+    # Apply vertical averaging
+    cleaned = np.zeros_like(binary)
+    for i in range(binary.shape[1]):
+        col = binary[:, i]
+        cleaned[:, i] = (np.mean(col) > 127) * 255
+
+    return cleaned
+
+def preprocess_image(self, image):
+    self.steps = []
+    self.add_step("Original Image", image)
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
+    problems, barcode_region = self.detect_image_problems(gray)
+    self.add_step("Detected Problems: " + ", ".join(problems), gray)
+
+    if barcode_region is None:
+        return gray
+
+    processed = gray.copy()
+    x, y, w, h = barcode_region
+
+    # Fix rotation first if needed
+    if 'rotation' in problems:
+        processed = self.fix_rotation(processed)
+        self.add_step("Fixed Rotation", processed)
+
+        # Re-detect barcode region
+        new_region = self.detect_barcode_region(processed)
+        if new_region:
+            barcode_region = new_region
+            x, y, w, h = barcode_region
+        else:
+            processed = gray.copy()
+            barcode_region = self.detect_barcode_region(processed)
+            if barcode_region:
+                x, y, w, h = barcode_region
+
+    # Extract ROI
+    roi = processed[y:y+h, x:x+w].copy()
+
+    # Remove foreign objects first
+    if 'foreign_object' in problems:
+        roi = self.remove_foreign_object(roi, (0, 0, w, h))
+        self.add_step("Removed Foreign Object", roi)
+
+    # Fix salt & pepper next
+    if 'salt_pepper' in problems:
+        roi = self.remove_salt_pepper(roi, (0, 0, w, h))
+        self.add_step("Removed Salt & Pepper", roi)
+
+    # Fix frequency domain issues
+    if 'frequency_domain' in problems:
+        roi = self.fix_frequency_domain(roi, (0, 0, w, h))
+        self.add_step("Fixed Frequency Domain", roi)
+
+    # Fix blur
+    if 'blur' in problems:
+        roi = self.fix_blur(roi, (0, 0, w, h))
+        self.add_step("Fixed Blur", roi)
+
+    # Fix contrast last before binarization
+    if 'low_contrast' in problems:
+        roi = self.fix_contrast(roi, (0, 0, w, h))
+        self.add_step("Enhanced Contrast", roi)
+
+    # Binarize
+    binary = self.binarize(roi)
+    self.add_step("Binarized", binary)
+
+    # Find optimal crop
+    cropped = self.find_optimal_crop(binary)
+    self.add_step("Cropped", cropped)
+
+    # Final vertical averaging filter
+    final = self.final_cleanup(cropped)
+    self.add_step("Final Cleanup", final)
+
+    return final
+
+def visualize_steps(self):
+    n_steps = len(self.steps)
+    cols = min(4, n_steps)
+    rows = (n_steps + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
+
+    # Handle single image case
+    if rows * cols == 1:
+        axes = np.array([axes])
+
+    # Reshape axes for proper indexing
+    if rows == 1:
+        axes = axes.reshape(1, -1)
+    elif cols == 1:
+        axes = axes.reshape(-1, 1)
+
+    for i, (description, img) in enumerate(self.steps):
+        row = i // cols
+        col = i % cols
+        ax = axes[row, col]
+        if len(img.shape) == 2:
+            ax.imshow(img, cmap='gray')
+        else:
+            ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        ax.set_title(description, fontsize=8)
+        ax.axis('off')
+
+    # Hide empty subplots
+    for i in range(len(self.steps), rows * cols):
+        row = i // cols
+        col = i % cols
+        axes[row, col].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+content_copy
+download
+ Use code with caution.
+
+if name == "main":
+preprocessor = BarcodePreprocessor()
+image_path = filedialog.askopenfilename(
+title="Select an Image",
+filetypes=[("Image Files", ".png;.jpg;*.jpeg")]
+)
+if image_path:
+image = cv2.imread(image_path)
+if image is not None:
+processed_image = preprocessor.preprocess_image(image)
+preprocessor.visualize_steps()
+else:
+print("Failed to load image.")"
+
+-----------------------
+testcase:
+Foreign object covering part of barcode:
+perfect
+
+Blurred image:
+bad with opeinings
+
+low contrast , dark image:
+perfect
+
+low contrast , bright image:
+was good midway but and was already cropped but when it got cropped again it got fucked
+
+salt and pepper:
+binarization makes image clear but salt and pepper exists , and is not detected , but lets just let it slide and take averaging filter that will hopefully fix it , very shit cropping , try to detct barcode region by countoruing maybe
+
+badly compressed:
+perfect
+
+tilted and part of it cut out:
+failed as it rotated in the wrong direction and cropped to the numbers probably because it couldn't find barcode due to bad tilt
+
+no contrast:
+good but did not crop and final imgae was black
+
+frequency domain problem+ rotataion:
+PERFECT
+-------------------------------
+
+we need to fix the Blurred image problem and the salt and peper and rotation, i will show you previous code snippets where they worked 
+-----------------------
+# Blur:
+"Click here to download the source code to this post
+detecting_blur_header
+
+Between myself and my father, Jemma, the super-sweet, hyper-active, extra-loving family beagle may be the most photographed dog of all time. Since we got her as a 8-week old puppy, to now, just under three years later, we have accumulated over 6,000+ photos of the dog.
+
+Excessive?
+
+Perhaps. But I love dogs. A lot. Especially beagles. So it should come as no surprise that as a dog owner, I spend a lot of time playing tug-of-war with Jemma’s favorite toys, rolling around on the kitchen floor with her as we roughhouse, and yes, snapping tons of photos of her with my iPhone.
+
+Over this past weekend I sat down and tried to organize the massive amount of photos in iPhoto. Not only was it a huge undertaking, I started to notice a pattern fairly quickly — there were lots of photos with excessive amounts of blurring.
+
+Whether due to sub-par photography skills, trying to keep up with super-active Jemma as she ran around the room, or her spazzing out right as I was about to take the perfect shot, many photos contained a decent amount of blurring.
+
+Now, for the average person I suppose they would have just deleted these blurry photos (or at least moved them to a separate folder) — but as a computer vision scientist, that wasn’t going to happen.
+
+Instead, I opened up an editor and coded up a quick Python script to perform blur detection with OpenCV.
+
+In the rest of this blog post, I’ll show you how to compute the amount of blur in an image using OpenCV, Python, and the Laplacian operator. By the end of this post, you’ll be able to apply the variance of the Laplacian method to your own photos to detect the amount of blurring.
+
+
+Looking for the source code to this post?
+Jump Right To The Downloads Section 
+Variance of the Laplacian
+Figure 2: Convolving the input image with the Laplacian operator.
+Figure 1: Convolving the input image with the Laplacian operator.
+My first stop when figuring out how to detect the amount of blur in an image was to read through the excellent survey work, Analysis of focus measure operators for shape-from-focus [2013 Pertuz et al]. Inside their paper, Pertuz et al. reviews nearly 36 different methods to estimate the focus measure of an image.
+
+If you have any background in signal processing, the first method to consider would be computing the Fast Fourier Transform of the image and then examining the distribution of low and high frequencies — if there are a low amount of high frequencies, then the image can be considered blurry. However, defining what is a low number of high frequencies and what is a high number of high frequencies can be quite problematic, often leading to sub-par results.
+
+Instead, wouldn’t it be nice if we could just compute a single floating point value to represent how blurry a given image is?
+
+Pertuz et al. reviews many methods to compute this “blurryness metric”, some of them simple and straightforward using just basic grayscale pixel intensity statistics, others more advanced and feature-based, evaluating the Local Binary Patterns of an image.
+
+After a quick scan of the paper, I came to the implementation that I was looking for: variation of the Laplacian by Pech-Pacheco et al. in their 2000 ICPR paper, Diatom autofocusing in brightfield microscopy: a comparative study.
+
+The method is simple. Straightforward. Has sound reasoning. And can be implemented in only a single line of code:
+
+ → Launch Jupyter Notebook on Google Colab
+Blur detection with OpenCV
+cv2.Laplacian(image, cv2.CV_64F).var()
+You simply take a single channel of an image (presumably grayscale) and convolve it with the following 3 x 3 kernel:
+
+Figure 2: The Laplacian kernel.
+Figure 2: The Laplacian kernel.
+And then take the variance (i.e. standard deviation squared) of the response.
+
+If the variance falls below a pre-defined threshold, then the image is considered blurry; otherwise, the image is not blurry.
+
+The reason this method works is due to the definition of the Laplacian operator itself, which is used to measure the 2nd derivative of an image. The Laplacian highlights regions of an image containing rapid intensity changes, much like the Sobel and Scharr operators. And, just like these operators, the Laplacian is often used for edge detection. The assumption here is that if an image contains high variance then there is a wide spread of responses, both edge-like and non-edge like, representative of a normal, in-focus image. But if there is very low variance, then there is a tiny spread of responses, indicating there are very little edges in the image. As we know, the more an image is blurred, the less edges there are.
+
+Obviously the trick here is setting the correct threshold which can be quite domain dependent. Too low of a threshold and you’ll incorrectly mark images as blurry when they are not. Too high of a threshold then images that are actually blurry will not be marked as blurry. This method tends to work best in environments where you can compute an acceptable focus measure range and then detect outliers.
+
+Detecting the amount of blur in an image
+So now that we’ve reviewed the the method we are going to use to compute a single metric to represent how “blurry” a given image is, let’s take a look at our dataset of the following 12 images:
+
+Figure 3: Our dataset of images. Some are blurry, some are not. Our goal is to perform blur detection with OpenCV and mark the images as such.
+Figure 3: Our dataset of images. Some are blurry, some are not. Our goal is to perform blur detection with OpenCV and mark the images as such.
+As you can see, some images are blurry, some images are not. Our goal here is to correctly mark each image as blurry or non-blurry.
+
+With that said, open up a new file, name it detect_blur.py , and let’s get coding:
+
+ → Launch Jupyter Notebook on Google Colab
+Blur detection with OpenCV
+# import the necessary packages
+from imutils import paths
+import argparse
+import cv2
+def variance_of_laplacian(image):
+	# compute the Laplacian of the image and then return the focus
+	# measure, which is simply the variance of the Laplacian
+	return cv2.Laplacian(image, cv2.CV_64F).var()
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-i", "--images", required=True,
+	help="path to input directory of images")
+ap.add_argument("-t", "--threshold", type=float, default=100.0,
+	help="focus measures that fall below this value will be considered 'blurry'")
+args = vars(ap.parse_args())
+We start off by importing our necessary packages on Lines 2-4. If you don’t already have my imutils package on your machine, you’ll want to install it now:
+
+ → Launch Jupyter Notebook on Google Colab
+Blur detection with OpenCV
+$ pip install imutils
+From there, we’ll define our variance_of_laplacian function on Line 6. This method will take only a single argument the image (presumed to be a single channel, such as a grayscale image) that we want to compute the focus measure for. From there, Line 9 simply convolves the image with the 3 x 3 Laplacian operator and returns the variance.
+
+Lines 12-17 handle parsing our command line arguments. The first switch we’ll need is --images , the path to the directory containing our dataset of images we want to test for blurriness.
+
+We’ll also define an optional argument --thresh , which is the threshold we’ll use for the blurry test. If the focus measure for a given image falls below this threshold, we’ll mark the image as blurry. It’s important to note that you’ll likely have to tune this value for your own dataset of images. A value of 100 seemed to work well for my dataset, but this value is quite subjective to the contents of the image(s), so you’ll need to play with this value yourself to obtain optimal results.
+
+Believe it or not, the hard part is done! We just need to write a bit of code to load the image from disk, compute the variance of the Laplacian, and then mark the image as blurry or non-blurry:
+
+ → Launch Jupyter Notebook on Google Colab
+Blur detection with OpenCV
+# loop over the input images
+for imagePath in paths.list_images(args["images"]):
+	# load the image, convert it to grayscale, and compute the
+	# focus measure of the image using the Variance of Laplacian
+	# method
+	image = cv2.imread(imagePath)
+	gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+	fm = variance_of_laplacian(gray)
+	text = "Not Blurry"
+	# if the focus measure is less than the supplied threshold,
+	# then the image should be considered "blurry"
+	if fm < args["threshold"]:
+		text = "Blurry"
+	# show the image
+	cv2.putText(image, "{}: {:.2f}".format(text, fm), (10, 30),
+		cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
+	cv2.imshow("Image", image)
+	key = cv2.waitKey(0)
+We start looping over our directory of images on Line 20. For each of these images we’ll load it from disk, convert it to grayscale, and then apply blur detection using OpenCV (Lines 24-27).
+
+In the case that the focus measure exceeds the threshold supplied a command line argument, we’ll mark the image as “blurry”.
+
+Finally, Lines 35-38 write the text and computed focus measure to the image and display the result to our screen."
+---------------------
+# Salt and pepper 
+      # Enhanced salt and pepper detection
+        median = cv2.medianBlur(gray, 3)
+        diff = np.abs(gray - median)
+        if np.percentile(diff, 95) > 40:
+            problems.append('salt_pepper')
+			
+    def improved_salt_pepper_removal(self, image):
+        """Enhanced salt and pepper noise removal"""
+        # Multiple passes of median filtering with increasing kernel sizes
+        result = cv2.medianBlur(image, 3)
+        result = cv2.medianBlur(result, 5)
+        
+        # Check if we need another pass
+        noise_level = np.std(result - image)
+        if noise_level > 30:
+            result = cv2.medianBlur(result, 3)
+        
+        return result
+--------------------
+# rotation:
+
+    # Check for rotation
+        coords = np.column_stack(np.where(edges > 0))
+        if len(coords) > 0:
+            angle = cv2.minAreaRect(coords)[-1]
+            if abs(angle) > 5:
+                problems.append('rotation')
+				
+    @staticmethod
+    def fix_rotation(image):
+        edges = cv2.Canny(image, 50, 150, apertureSize=3)
+        lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=100)
+        if lines is not None:
+            angles = []
+            for rho, theta in lines[:, 0]:
+                angle = np.degrees(theta)
+                if angle < 45:
+                    angles.append(angle)
+                elif angle > 135:
+                    angles.append(angle - 180)
+            if angles:
+                median_angle = np.median(angles)
+                rows, cols = image.shape
+                matrix = cv2.getRotationMatrix2D((cols / 2, rows / 2), median_angle, 1)
+                return cv2.warpAffine(image, matrix, (cols, rows), flags=cv2.INTER_CUBIC)
+        return image
+
+----------------
+----------------------------------------------------
