@@ -284,7 +284,8 @@ class Pipeline1(PipelineBase):
         edges = cv2.Canny(roi, 50, 150)
         coords = np.column_stack(np.where(edges > 0))
         if len(coords) > 0:
-            angle = cv2.minAreaRect(coords)[-1]
+            rect = cv2.minAreaRect(coords)
+            angle = rect[-1]
             if abs(angle) > 5:
                 problems.append('rotation')
 
@@ -362,24 +363,29 @@ class Pipeline1(PipelineBase):
         return result_img
 
     def fix_rotation(self, image):
-        edges = cv2.Canny(image, 50, 150, apertureSize=3)
+        h, w = image.shape[:2]
+        center = (w // 2, h // 2)
+        gray = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if len(image.shape) == 2 else image
+        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
         lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=100)
+
+        angles = []
         if lines is not None:
-            angles = []
-            for rho, theta in lines[:, 0]:
+            for line in lines:
+                rho, theta = line[0]
                 angle = np.degrees(theta)
-                if angle < 45:
+                if 45 < angle < 135:
+                    angles.append(angle - 90)
+                elif 0 <= angle <= 45:
                     angles.append(angle)
-                elif angle > 135:
+                elif 135 <= angle <= 180:
                     angles.append(angle - 180)
-            if angles:
-                median_angle = np.median(angles)
-                rows, cols = image.shape
-                matrix = cv2.getRotationMatrix2D((cols / 2, rows / 2), median_angle, 1)
-                return cv2.warpAffine(image, matrix, (cols, rows),
-                                    flags=cv2.INTER_CUBIC,
-                                    borderMode=cv2.BORDER_CONSTANT,
-                                    borderValue=255)
+
+        if angles:
+            median_angle = np.median(angles)
+            M = cv2.getRotationMatrix2D(center, median_angle, 1.0)
+            rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            return rotated
         return image
 
     def fix_contrast(self, image, barcode_region):
@@ -398,8 +404,8 @@ class Pipeline1(PipelineBase):
         roi = image[y:y+h, x:x+w].copy()
 
         # Single pass gentle unsharp masking
-        gaussian = cv2.GaussianBlur(roi, (0, 0), 2)
-        unsharp = cv2.addWeighted(roi, 1.3, gaussian, -0.3, 0)
+        gaussian = cv2.GaussianBlur(roi, (0, 0), 1)
+        unsharp = cv2.addWeighted(roi, 1.5, gaussian, -0.5, 0)
 
         result = image.copy()
         result[y:y+h, x:x+w] = unsharp
@@ -472,15 +478,11 @@ class Pipeline1(PipelineBase):
         return binary[y:y+h, x:x+w]
 
     def final_cleanup(self, binary):
-        min_width = 1  # Always use 1-pixel width
-        h = binary.shape[0]
-
-        # Apply vertical averaging
+        rows, cols = binary.shape
         cleaned = np.zeros_like(binary)
-        for i in range(binary.shape[1]):
+        for i in range(cols):
             col = binary[:, i]
             cleaned[:, i] = (np.mean(col) > 127) * 255
-
         return cleaned
 
     def process(self, image: np.ndarray) -> np.ndarray:
@@ -501,17 +503,10 @@ class Pipeline1(PipelineBase):
         if 'rotation' in problems:
             processed = self.fix_rotation(processed)
             self.add_step("Fixed Rotation", processed)
-
-            # Re-detect barcode region
             new_region = self.detect_barcode_region(processed)
             if new_region:
                 barcode_region = new_region
                 x, y, w, h = barcode_region
-            else:
-                processed = gray.copy()
-                barcode_region = self.detect_barcode_region(processed)
-                if barcode_region:
-                    x, y, w, h = barcode_region
 
         # Extract ROI
         roi = processed[y:y+h, x:x+w].copy()
@@ -595,6 +590,10 @@ class Pipeline2(PipelineBase):
             logger.error(f"Error in morphological operations: {str(e)}")
             return image
 
+    def fix_blur(self, image):
+        gaussian = cv2.GaussianBlur(image, (0, 0), 1)
+        return cv2.addWeighted(image, 1.5, gaussian, -0.5, 0)
+
     def _enhance_contrast(self, image: np.ndarray)->np.ndarray:
         try:
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
@@ -621,8 +620,12 @@ class Pipeline2(PipelineBase):
             processed = self._apply_morphological_operations(roi)
             self.add_step("Morphological Processing", processed)
 
+            if 'blur' in probs:
+                processed = self.fix_blur(processed)
+                self.add_step("Sharpened", processed)
+
             enhanced = self._enhance_contrast(processed)
-            self.add_step("Enhanced", enhanced)
+            self.add_step("Enhanced Contrast", enhanced)
 
             result = gray.copy()
             result[y:y+h, x:x+w] = enhanced
@@ -654,7 +657,7 @@ class Pipeline3(PipelineBase):
                 problems.append('frequency_domain')
 
             # Check for periodic noise
-            hf = magnitude_spectrum[0:magnitude_spectrum.shape[0]//4, :]
+            hf = magnitude_spectrum[:magnitude_spectrum.shape[0]//4, :]
             if np.max(hf) > 150:
                 problems.append('periodic_noise')
 
@@ -671,12 +674,12 @@ class Pipeline3(PipelineBase):
             crow, ccol = rows//2, cols//2
             mask = np.ones((rows, cols), np.uint8)
             r = 30
-            x_grid, y_grid = np.ogrid[:rows, :cols]
-            mask_area = (x_grid - crow)**2 + (y_grid - ccol)**2 <= r*r
-            mask[mask_area] = 0
+            center_freq_row = slice(crow - r, crow + r)
+            center_freq_col = slice(ccol - r, ccol + r)
+            mask[center_freq_row, center_freq_col] = 0
 
-            f_shift = f_shift * mask
-            f_ishift = np.fft.ifftshift(f_shift)
+            f_shift_filtered = f_shift * mask
+            f_ishift = np.fft.ifftshift(f_shift_filtered)
             img_back = np.fft.ifft2(f_ishift)
             img_back = np.abs(img_back)
             return cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
@@ -738,7 +741,6 @@ class BarcodeProcessor:
                 (self.pipeline3, "Pipeline 3")
             ]:
                 logger.info(f"Running {name}...")
-                # Ensure input to Pipeline1 is grayscale
                 gray_image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY) if len(image.shape) > 2 else image.copy()
                 result = pipeline.process(gray_image)
                 score, metrics = BarcodeImageQuality.evaluate_quality(result)
@@ -791,17 +793,25 @@ class BarcodeProcessor:
 
             # Pipeline results (Rows 1,2,3)
             for row_index, result in enumerate(self.all_results, start=1):
-                # Place final pipeline image in first col
-                axes[row_index, 0].imshow(result.processed_image, cmap='gray')
-                axes[row_index, 0].set_title(result.name)
-                axes[row_index, 0].axis('off')
-
                 # Steps
-                for step_index, (desc, step_img) in enumerate(result.steps, start=1):
-                    if step_index < cols:
-                        axes[row_index, step_index].imshow(step_img, cmap='gray')
-                        axes[row_index, step_index].set_title(desc)
-                        axes[row_index, step_index].axis('off')
+                for step_index, (desc, step_img) in enumerate(result.steps):
+                    col_index = step_index 
+                    if col_index < cols:
+                        ax = axes[row_index, col_index]
+                        ax.imshow(step_img, cmap='gray')
+                        ax.set_title(f"Step {step_index+1}: {desc}", fontsize=8)
+                        ax.axis('off')
+                    
+                # Pad remaining columns with empty plots
+                for col_index in range(len(result.steps), cols):
+                    axes[row_index, col_index].axis('off')
+
+                # Final processed image in the last column
+                if cols > 0:
+                    ax_final = axes[row_index, 0]
+                    ax_final.imshow(result.processed_image, cmap='gray')
+                    ax_final.set_title(f"{result.name} (Final)", fontsize=9)
+                    ax_final.axis('off')
 
             # Final row => Winner
             if self.best_result:
