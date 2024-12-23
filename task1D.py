@@ -30,15 +30,15 @@ class BarcodePreprocessor:
 
         min_width = max(1, int(np.percentile(widths, 10)))
         pattern_width = max(3, int(np.median(widths)))
-        
-        return min(min_width, 5), min(pattern_width, 15)  # Smaller caps
+
+        return min(min_width, 3), min(pattern_width, 9)
 
     def detect_barcode_region(self, image):
         sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
         gradx = cv2.convertScaleAbs(sobelx)
         blur = cv2.GaussianBlur(gradx, (21, 21), 0)
         thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        
+
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return None
@@ -71,6 +71,7 @@ class BarcodePreprocessor:
         x, y, w, h = barcode_region
         roi = gray[y:y+h, x:x+w]
 
+        # Get pattern info first
         self.min_bar_width, self.pattern_width = self.estimate_bar_thickness(roi)
 
         # Foreign object detection
@@ -79,6 +80,14 @@ class BarcodePreprocessor:
         v_mean = np.mean(vertical_profile)
         if np.any(np.abs(vertical_profile - v_mean) > 2.5 * v_std):
             problems.append('foreign_object')
+
+        # Rotation detection (do this early)
+        edges = cv2.Canny(roi, 50, 150)
+        coords = np.column_stack(np.where(edges > 0))
+        if len(coords) > 0:
+            angle = cv2.minAreaRect(coords)[-1]
+            if abs(angle) > 5:
+                problems.append('rotation')
 
         # Blur detection
         laplacian_var = cv2.Laplacian(roi, cv2.CV_64F).var()
@@ -93,34 +102,44 @@ class BarcodePreprocessor:
         # Salt and pepper
         median_blurred = cv2.medianBlur(roi, 3)
         noise_diff = np.abs(roi - median_blurred)
-        if np.percentile(noise_diff, 95) > 30:
+        if np.mean(noise_diff) > 10:
             problems.append('salt_pepper')
 
-        # Rotation
-        edges = cv2.Canny(roi, 50, 150)
-        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=50)
-        if lines is not None:
-            angles = []
-            for rho, theta in lines[:, 0]:
-                angle = np.degrees(theta)
-                if angle < 45:
-                    angles.append(angle)
-                elif angle > 135:
-                    angles.append(angle - 180)
-            if angles and abs(np.median(angles)) > 5:
-                problems.append('rotation')
+        # Frequency domain
+        f_transform = np.fft.fft2(roi)
+        f_shift = np.fft.fftshift(f_transform)
+        magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
+        if np.std(magnitude_spectrum) > 45:
+            problems.append('frequency_domain')
 
         return problems, barcode_region
 
     def remove_foreign_object(self, image, barcode_region):
         x, y, w, h = barcode_region
         roi = image[y:y+h, x:x+w].copy()
-        
-        # Apply 1-pixel vertical averaging
-        cleaned = np.zeros_like(roi)
-        for i in range(w):
-            col = roi[:, i]
-            cleaned[:, i] = np.mean(col) * np.ones(h)
+
+        # Get vertical profile
+        vertical_profile = np.mean(roi, axis=0)
+        v_std = np.std(vertical_profile)
+        v_mean = np.mean(vertical_profile)
+
+        # Get smallest bar width
+        min_bar_width, _ = self.estimate_bar_thickness(roi)
+        min_bar_width = min(min_bar_width, 3)
+
+        # Create vertical kernel
+        kernel = np.ones((h, min_bar_width)) / h
+
+        # Detect anomalies
+        anomalies = np.abs(vertical_profile - v_mean) > 2.5 * v_std
+
+        # Apply vertical averaging only on anomalous regions
+        cleaned = roi.copy()
+        for i in range(w - min_bar_width + 1):
+            if anomalies[i]:
+                region = roi[:, i:i+min_bar_width]
+                avg_val = np.mean(region, axis=0)
+                cleaned[:, i:i+min_bar_width] = np.tile(avg_val, (h, 1))
 
         result = image.copy()
         result[y:y+h, x:x+w] = cleaned
@@ -130,37 +149,19 @@ class BarcodePreprocessor:
         x, y, w, h = barcode_region
         roi = image[y:y+h, x:x+w].copy()
 
-        # Try different kernel combinations
-        candidates = []
-        
-        # Single pass filters
-        candidates.append(cv2.medianBlur(roi, 3))
-        candidates.append(cv2.medianBlur(roi, 5))
-        
-        # Double pass combinations
-        temp = cv2.medianBlur(roi, 3)
-        candidates.append(cv2.medianBlur(temp, 5))
-        
-        temp = cv2.medianBlur(roi, 5)
-        candidates.append(cv2.medianBlur(temp, 3))
+        # Progressive median filtering
+        result = cv2.medianBlur(roi, 3)
+        result = cv2.medianBlur(result, 5)
+        noise_level = np.std(result - roi)
+        if noise_level > 30:
+            result = cv2.medianBlur(result, 3)
 
-        # Find best result based on edge preservation
-        best_score = -float('inf')
-        best_result = candidates[0]
-        
-        for candidate in candidates:
-            edges = cv2.Canny(candidate, 50, 150)
-            score = np.sum(edges)
-            if score > best_score:
-                best_score = score
-                best_result = candidate
-
-        result = image.copy()
-        result[y:y+h, x:x+w] = best_result
-        return result
+        result_img = image.copy()
+        result_img[y:y+h, x:x+w] = result
+        return result_img
 
     def fix_rotation(self, image):
-        edges = cv2.Canny(image, 50, 150)
+        edges = cv2.Canny(image, 50, 150, apertureSize=3)
         lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
         if lines is not None:
             angles = []
@@ -173,42 +174,20 @@ class BarcodePreprocessor:
             if angles:
                 median_angle = np.median(angles)
                 rows, cols = image.shape
-                
-                # Add padding before rotation
-                pad = int(max(rows, cols) * 0.3)
-                padded = cv2.copyMakeBorder(image, pad, pad, pad, pad,
-                                          cv2.BORDER_CONSTANT, value=255)
-                
-                # Calculate new dimensions
-                angle_rad = abs(np.radians(median_angle))
-                new_w = int(cols * abs(np.cos(angle_rad)) + rows * abs(np.sin(angle_rad)))
-                new_h = int(rows * abs(np.cos(angle_rad)) + cols * abs(np.sin(angle_rad)))
-
-                # Adjust matrix for new dimensions
                 matrix = cv2.getRotationMatrix2D((cols/2, rows/2), median_angle, 1)
-                matrix[0, 2] += (new_w - cols) / 2
-                matrix[1, 2] += (new_h - rows) / 2
-
-                rotated = cv2.warpAffine(padded, matrix, (new_w, new_h),
-                                       flags=cv2.INTER_CUBIC,
-                                       borderMode=cv2.BORDER_CONSTANT,
-                                       borderValue=255)
-
-                # Find content in rotated image
-                edges = cv2.Canny(rotated, 50, 150)
-                coords = np.column_stack(np.where(edges > 0))
-                if len(coords):
-                    x, y, w, h = cv2.boundingRect(coords)
-                    return rotated[y:y+h, x:x+w]
+                return cv2.warpAffine(image, matrix, (cols, rows),
+                                    flags=cv2.INTER_CUBIC,
+                                    borderMode=cv2.BORDER_CONSTANT,
+                                    borderValue=255)
         return image
 
     def fix_contrast(self, image, barcode_region):
         x, y, w, h = barcode_region
         roi = image[y:y+h, x:x+w].copy()
-        
+
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         enhanced = clahe.apply(roi)
-        
+
         result = image.copy()
         result[y:y+h, x:x+w] = enhanced
         return result
@@ -217,17 +196,43 @@ class BarcodePreprocessor:
         x, y, w, h = barcode_region
         roi = image[y:y+h, x:x+w].copy()
 
+        # Single pass gentle unsharp masking
         gaussian = cv2.GaussianBlur(roi, (0, 0), 2)
-        unsharp = cv2.addWeighted(roi, 1.2, gaussian, -0.2, 0)  # Gentler parameters
+        unsharp = cv2.addWeighted(roi, 1.3, gaussian, -0.3, 0)
+
+        return unsharp
+
+    def fix_frequency_domain(self, image, barcode_region):
+        x, y, w, h = barcode_region
+        roi = image[y:y+h, x:x+w].copy()
+
+        f_transform = np.fft.fft2(roi)
+        f_shift = np.fft.fftshift(f_transform)
+        rows, cols = roi.shape
+        crow, ccol = rows//2, cols//2
+
+        # Create high-pass filter mask
+        mask = np.ones((rows, cols), np.uint8)
+        r = 30
+        x_grid, y_grid = np.ogrid[:rows, :cols]
+        mask_area = (x_grid - crow)**2 + (y_grid - ccol)**2 <= r*r
+        mask[mask_area] = 0
+
+        f_shift = f_shift * mask
+        f_ishift = np.fft.ifftshift(f_shift)
+        img_back = np.fft.ifft2(f_ishift)
+        img_back = np.abs(img_back)
+
+        cleaned = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
         result = image.copy()
-        result[y:y+h, x:x+w] = unsharp
+        result[y:y+h, x:x+w] = cleaned
         return result
 
     def binarize(self, image):
         p2, p98 = np.percentile(image, (2, 98))
         normalized = np.interp(image, (p2, p98), (0, 255)).astype(np.uint8)
-        
+
         binary = cv2.adaptiveThreshold(
             normalized, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -235,46 +240,45 @@ class BarcodePreprocessor:
             41,  # Smaller window
             5
         )
-        
+
         kernel = np.ones((2,2), np.uint8)
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-        
+
         return binary
-
-    def final_cleanup(self, binary):
-        try:
-            min_width = max(1, self.min_bar_width)
-        except:
-            min_width = 1
-
-        kernel = np.ones((binary.shape[0], min_width)) / binary.shape[0]
-        cleaned = np.zeros_like(binary)
-
-        for i in range(binary.shape[1] - min_width + 1):
-            col_sum = np.sum(binary[:, i:i+min_width], axis=1) / min_width
-            cleaned[:, i] = (col_sum > 127).astype(np.uint8) * 255
-
-        return cleaned
 
     def find_optimal_crop(self, binary):
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return binary
 
+        # Find largest contour
         largest = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest)
 
-        # Add generous padding for numbers
+        # Add padding
         pad_y_top = int(0.05 * h)
-        pad_y_bottom = int(0.2 * h)  # More padding below for numbers
+        pad_y_bottom = int(0.2 * h)  # More padding for numbers
         pad_x = int(0.05 * w)
 
+        # Ensure we don't exceed image boundaries
         x = max(0, x - pad_x)
         y = max(0, y - pad_y_top)
         w = min(binary.shape[1] - x, w + 2*pad_x)
         h = min(binary.shape[0] - y, h + pad_y_top + pad_y_bottom)
 
         return binary[y:y+h, x:x+w]
+
+    def final_cleanup(self, binary):
+        min_width = 1  # Always use 1-pixel width
+        h = binary.shape[0]
+
+        # Apply vertical averaging
+        cleaned = np.zeros_like(binary)
+        for i in range(binary.shape[1]):
+            col = binary[:, i]
+            cleaned[:, i] = (np.mean(col) > 127) * 255
+
+        return cleaned
 
     def preprocess_image(self, image):
         self.steps = []
@@ -294,7 +298,7 @@ class BarcodePreprocessor:
         if 'rotation' in problems:
             processed = self.fix_rotation(processed)
             self.add_step("Fixed Rotation", processed)
-            
+
             # Re-detect barcode region
             new_region = self.detect_barcode_region(processed)
             if new_region:
@@ -319,6 +323,11 @@ class BarcodePreprocessor:
             roi = self.remove_salt_pepper(roi, (0, 0, w, h))
             self.add_step("Removed Salt & Pepper", roi)
 
+        # Fix frequency domain issues
+        if 'frequency_domain' in problems:
+            roi = self.fix_frequency_domain(roi, (0, 0, w, h))
+            self.add_step("Fixed Frequency Domain", roi)
+
         # Fix blur
         if 'blur' in problems:
             roi = self.fix_blur(roi, (0, 0, w, h))
@@ -333,13 +342,13 @@ class BarcodePreprocessor:
         binary = self.binarize(roi)
         self.add_step("Binarized", binary)
 
-        # Final cleanup using vertical averaging
-        cleaned = self.final_cleanup(binary)
-        self.add_step("Final Cleanup", cleaned)
-
         # Find optimal crop
-        final = self.find_optimal_crop(cleaned)
-        self.add_step("Final Result", final)
+        cropped = self.find_optimal_crop(binary)
+        self.add_step("Cropped", cropped)
+
+        # Final vertical averaging filter
+        final = self.final_cleanup(cropped)
+        self.add_step("Final Cleanup", final)
 
         return final
 
@@ -349,11 +358,11 @@ class BarcodePreprocessor:
         rows = (n_steps + cols - 1) // cols
 
         fig, axes = plt.subplots(rows, cols, figsize=(4*cols, 4*rows))
-        
+
         # Handle single image case
         if rows * cols == 1:
             axes = np.array([axes])
-            
+
         # Reshape axes for proper indexing
         if rows == 1:
             axes = axes.reshape(1, -1)
