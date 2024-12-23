@@ -1,0 +1,91 @@
+Foreign object covering part of barcode: 
+
+Pipeline 1: perfect
+Pipeline 2: not fixed
+Pipeline 3:  not fixed
+Winner selection:  perfect (chose 1)
+General Comment: steps not shown in correct order 
+-------------
+Blurred image:
+
+Pipeline 1:  too much opening thin bars disapparead making the barcode failed
+Pipeline 2: perfect but not sharpened meaning we need to unsharpen it without applying too much effects so thin lines dont disappear , because i notice that the thin lines are grey blurred
+Pipeline 3:  inverted black and white so fail
+Winner selection:  okay for now but (chose 1)
+General Comment: 
+-------------
+
+low contrast , dark image:
+  
+  
+Pipeline 1: perfect
+Pipeline 2: good 
+Pipeline 3: good but inverted
+Winner selection: perfect (chose 1)
+General Comment:
+-------------
+
+low contrast , bright image: 
+    
+
+Pipeline 1: perfect cleaning but unesseraily cropped again at the end while it was already cropped  so failed
+Pipeline 2: opened too much
+Pipeline 3: good but inverted
+Winner selection: idk (chose 1)
+General Comment:
+-------------
+ 
+salt and pepper: 
+    
+
+Pipeline 1: best cleaning but needs averaging filter at the end , but cropping is bulshit
+Pipeline 2: bad
+Pipeline 3: bad
+Winner selection: bad 1 is better than 2
+General Comment:
+-------------
+ 
+
+badly compressed:
+    
+
+Pipeline 1: perfect
+Pipeline 2: good but inverted
+Pipeline 3: good but inverted
+Winner selection: perfect (chose 1)
+General Comment:
+-------------
+ 
+
+tilted and part of it cut out: 
+    
+
+Pipeline 1: failed  rotatetd at the opposite deirection and fucked cropping 
+Pipeline 2: failed
+Pipeline 3: failed
+Winner selection: ignored (chose 1)
+General Comment:
+-------------
+ 
+
+no contrast: 
+    
+
+Pipeline 1: perfect but nit cropped and end result was black thats why it didn't win
+Pipeline 2: bad
+Pipeline 3:bad
+Winner selection: bad (chose 2) should be 1
+General Comment:
+-------------
+
+
+frequency domain problem: 
+    
+
+Pipeline 1: perfect
+Pipeline 2: bad
+Pipeline 3:bad
+Winner selection: perfect (chose 1)
+General Comment:
+-------------
+ 
