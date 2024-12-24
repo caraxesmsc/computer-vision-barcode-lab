@@ -2,8 +2,23 @@ import os
 import cv2
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from tkinter import filedialog
+from scipy.signal import find_peaks
+from dataclasses import dataclass
+from typing import List, Tuple, Optional
+import logging
+
+import os
+import cv2
+import numpy as np
+
+# Use non-interactive backend for matplotlib
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 from tkinter import filedialog
 from scipy.signal import find_peaks
 from dataclasses import dataclass
@@ -32,37 +47,23 @@ class PipelineResult:
     metrics: dict
 
 class BarcodeImageQuality:
-    """Enhanced quality metrics for barcode images."""
+    """Class to evaluate barcode image quality."""
     @staticmethod
     def calculate_edge_quality(image: np.ndarray) -> float:
         edges = cv2.Canny(image, 50, 150)
         edge_density = np.mean(edges > 0)
         edge_coherence = cv2.Laplacian(image, cv2.CV_64F).var()
-        vertical_gradient = np.mean(np.abs(np.diff(image, axis=1)))
-        # Bonus for strong vertical patterns
-        if vertical_gradient > 50:
-            return (edge_density * 100 + edge_coherence * 0.1) * 1.2
         return edge_density * 100 + edge_coherence * 0.1
 
     @staticmethod
     def calculate_contrast_quality(image: np.ndarray) -> float:
         p5, p95 = np.percentile(image, [5, 95])
-        mean_intensity = np.mean(image)
-        contrast = p95 - p5
-        # Don't heavily penalize dark/bright images
-        if mean_intensity < 30 or mean_intensity > 225:
-            return contrast * 0.8
-        return contrast
+        return p95 - p5
 
     @staticmethod
     def calculate_pattern_quality(image: np.ndarray) -> float:
-        # Enhanced pattern detection focusing on vertical lines
         sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
-        pattern_score = np.mean(np.abs(sobelx))
-        # Add bonus for clear barcode patterns
-        if pattern_score > 50:
-            pattern_score *= 1.2
-        return pattern_score
+        return np.mean(np.abs(sobelx))
 
     @staticmethod
     def calculate_noise_quality(image: np.ndarray) -> float:
@@ -71,67 +72,23 @@ class BarcodeImageQuality:
         return 255 - np.mean(noise)
 
     @classmethod
-    # -------------------------------------
-# Updated Winner Selection Logic
-# -------------------------------------
-    def evaluate_quality(self, image: np.ndarray) -> Tuple[float, dict]:
-        """Enhanced quality metrics for better winner selection."""
+    def evaluate_quality(cls, image: np.ndarray) -> Tuple[float, dict]:
         if image is None:
             return 0.0, {}
 
-        # Edge quality with improved pattern detection
-        edges = cv2.Canny(image, 50, 150)
-        edge_density = np.mean(edges > 0)
-        edge_coherence = cv2.Laplacian(image, cv2.CV_64F).var()
-        edge_score = edge_density * 100 + edge_coherence * 0.1
-
-        # Contrast quality that better handles dark images
-        p5, p95 = np.percentile(image, [5, 95])
-        mean_intensity = np.mean(image)
-        contrast_score = p95 - p5
-        
-        # Don't overly penalize dark/bright images
-        if 10 < mean_intensity < 245:  
-            contrast_score *= 1.2
-
-        # Pattern quality focusing on barcode structure
-        sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
-        sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
-        pattern_score = np.mean(np.abs(sobelx)) / (np.mean(np.abs(sobely)) + 1e-6)
-
-        # Noise quality
-        blurred = cv2.GaussianBlur(image, (3, 3), 0)
-        noise = np.abs(image.astype(float) - blurred.astype(float))
-        noise_score = 255 - np.mean(noise)
-
-        # Salt & pepper specific detection
-        median = cv2.medianBlur(image, 3)
-        salt_pepper_diff = np.abs(image - median)
-        has_salt_pepper = np.percentile(salt_pepper_diff, 95) > 30
-
         metrics = {
-            'edge_score': edge_score,
-            'contrast_score': contrast_score,
-            'pattern_score': pattern_score,
-            'noise_score': noise_score,
-            'has_salt_pepper': has_salt_pepper
+            'edge_score': cls.calculate_edge_quality(image),
+            'contrast_score': cls.calculate_contrast_quality(image),
+            'pattern_score': cls.calculate_pattern_quality(image),
+            'noise_score': cls.calculate_noise_quality(image),
         }
 
-        # Weighted score calculation
         total_score = (
-            edge_score * 0.4 +
-            contrast_score * 0.3 +
-            pattern_score * 0.2 +
-            noise_score * 0.1
+            metrics['edge_score'] * 0.4
+            + metrics['contrast_score'] * 0.3
+            + metrics['pattern_score'] * 0.2
+            + metrics['noise_score'] * 0.1
         )
-
-        # Bonuses for desired characteristics
-        if pattern_score > 2.0:  # Strong vertical pattern
-            total_score *= 1.2
-        if not has_salt_pepper:  # Clean image
-            total_score *= 1.1
-        if 127 > mean_intensity > 30:  # Proper black text on white background
-            total_score *= 1.15
 
         return total_score, metrics
 
@@ -389,8 +346,9 @@ class Pipeline1(PipelineBase):
         min_bar_width, _ = self.estimate_bar_thickness(roi)
         min_bar_width = min(min_bar_width, 3)
 
-        kernel = np.ones((h, min_bar_width)) /h
+        kernel = np.ones((h, min_bar_width)) / h
         anomalies = np.abs(vertical_profile - v_mean) > 2.5 * v_std
+
         cleaned = roi.copy()
         for i in range(w - min_bar_width + 1):
             if anomalies[i]:
@@ -417,118 +375,40 @@ class Pipeline1(PipelineBase):
         result_img[y : y + h, x : x + w] = result
         return result_img
 
-    def process_salt_pepper(self, image, barcode_region):
-        """Enhanced salt & pepper handling with projection-based cropping."""
-        x, y, w, h = barcode_region
-        roi = image[y:y+h, x:x+w].copy()
+    def fix_rotation(self, image):
+        """Fix rotation by analyzing lines in the Hough transform."""
+        h, w = image.shape[:2]
+        center = (w // 2, h // 2)
+        if len(image.shape) == 2:
+            gray = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        else:
+            gray = image
 
-        # Multi-stage median filtering
-        filtered = cv2.medianBlur(roi, 3)
-        filtered = cv2.medianBlur(filtered, 5)
-        
-        # Additional filtering if needed
-        noise_level = np.std(filtered - roi)
-        if noise_level > 20:
-            filtered = cv2.medianBlur(filtered, 3)
+        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+        lines = cv2.HoughLines(edges, 1, np.pi / 180, threshold=100)
+        angles = []
 
-        # Apply projection-based cropping
-        binary = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        vertical_projection = np.sum(binary == 0, axis=0)
-        horizontal_projection = np.sum(binary == 0, axis=1)
-
-        # Find valid barcode region
-        v_threshold = 0.6 * np.max(vertical_projection)
-        h_threshold = 0.6 * np.max(horizontal_projection)
-        
-        v_indices = np.where(vertical_projection > v_threshold)[0]
-        h_indices = np.where(horizontal_projection > h_threshold)[0]
-
-        if len(v_indices) > 0 and len(h_indices) > 0:
-            x_start, x_end = v_indices[0], v_indices[-1]
-            y_start, y_end = h_indices[0], h_indices[-1]
-            
-            # Add padding
-            pad_x = int(0.05 * (x_end - x_start))
-            pad_y = int(0.05 * (y_end - y_start))
-            
-            x_start = max(0, x_start - pad_x)
-            x_end = min(w, x_end + pad_x)
-            y_start = max(0, y_start - pad_y)
-            y_end = min(h, y_end + pad_y)
-            
-            filtered = filtered[y_start:y_end, x_start:x_end]
-
-        result = image.copy()
-        result[y:y+h, x:x+w] = filtered
-        return result
-
-    def fix_rotation(self, image, barcode_region):
-        """Enhanced rotation correction using Mark's code approach."""
-        x, y, w, h = barcode_region
-        roi = image[y:y+h, x:x+w].copy()
-
-        # Add padding before rotation
-        pad = int(max(w, h) * 0.3)
-        padded = cv2.copyMakeBorder(roi, pad, pad, pad, pad, 
-                                cv2.BORDER_CONSTANT, value=255)
-
-        # Enhanced edge detection
-        edges = cv2.Canny(padded, 50, 150)
-        
-        # More precise line detection
-        lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=50)
-        
         if lines is not None:
-            angles = []
-            for rho, theta in lines[:,0]:
-                angle = np.degrees(theta)
-                if angle < 45:
-                    angles.append(angle)
-                elif angle > 135:
-                    angles.append(angle - 180)
-                elif 45 <= angle <= 135:
-                    angles.append(angle - 90)
+            for line in lines:
+                rho, theta = line[0]
+                angle_deg = np.degrees(theta)
+                if 45 < angle_deg < 135:
+                    angles.append(angle_deg - 90)
+                elif 0 <= angle_deg <= 45:
+                    angles.append(angle_deg)
+                elif 135 <= angle_deg <= 180:
+                    angles.append(angle_deg - 180)
 
-            if angles:
-                # Weighted median for better angle estimation
-                sorted_angles = sorted(angles)
-                weights = [1/(i+1) for i in range(len(sorted_angles))]
-                median_angle = np.average(sorted_angles, weights=weights)
-                
-                rows, cols = padded.shape
-                matrix = cv2.getRotationMatrix2D((cols/2, rows/2), median_angle, 1)
-                
-                # Calculate new dimensions to avoid cropping
-                angle_rad = abs(np.radians(median_angle))
-                new_w = int(cols * abs(np.cos(angle_rad)) + rows * abs(np.sin(angle_rad)))
-                new_h = int(rows * abs(np.cos(angle_rad)) + cols * abs(np.sin(angle_rad)))
-                
-                # Adjust transformation matrix
-                matrix[0, 2] += (new_w - cols)/2
-                matrix[1, 2] += (new_h - rows)/2
-
-                # Apply rotation with border replication
-                rotated = cv2.warpAffine(padded, matrix, (new_w, new_h),
-                                    flags=cv2.INTER_CUBIC,
-                                    borderMode=cv2.BORDER_REPLICATE)
-
-                # Find the actual barcode region in rotated image
-                edges = cv2.Canny(rotated, 50, 150)
-                coords = np.column_stack(np.where(edges > 0))
-                if len(coords) > 0:
-                    x_, y_, w_, h_ = cv2.boundingRect(coords)
-                    rotated_crop = rotated[y_:y_+h_, x_:x_+w_]
-                    
-                    # Ensure output size matches input
-                    if rotated_crop.shape != (h, w):
-                        rotated_crop = cv2.resize(rotated_crop, (w, h))
-                    
-                    result = image.copy()
-                    result[y:y+h, x:x+w] = rotated_crop
-                    return result
-
+        if angles:
+            median_angle = np.median(angles)
+            M = cv2.getRotationMatrix2D(center, median_angle, 1.0)
+            rotated = cv2.warpAffine(
+                image, M, (w, h),
+                flags=cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_REPLICATE
+            )
+            return rotated
         return image
-
 
     def fix_contrast(self, image, barcode_region):
         x, y, w, h = barcode_region
@@ -596,31 +476,6 @@ class Pipeline1(PipelineBase):
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         return binary
 
-    def _projection_based_crop(self, binary_image, original_roi):
-        """Crop the barcode region based on projections."""
-        vertical_projection = np.sum(binary_image == 0, axis=0)
-        horizontal_projection = np.sum(binary_image == 0, axis=1)
-
-        vertical_threshold = 0.6 * np.max(vertical_projection)
-        horizontal_threshold = 0.6 * np.max(horizontal_projection)
-
-        vertical_indices = np.where(vertical_projection > vertical_threshold)[0]
-        horizontal_indices = np.where(horizontal_projection > horizontal_threshold)[0]
-
-        if len(vertical_indices) > 0 and len(horizontal_indices) > 0:
-            x_start, x_end = vertical_indices[0], vertical_indices[-1]
-            y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
-            padding_x = int(0.05 * (x_end - x_start))
-            padding_y = int(0.05 * (y_end - y_start))
-            x_start = max(0, x_start - padding_x)
-            x_end = min(original_roi.shape[1], x_end + padding_x)
-            y_start = max(0, y_start - padding_y)
-            y_end = min(original_roi.shape[0], y_end + padding_y)
-
-            cropped = original_roi[y_start:y_end, x_start:x_end]
-            return cropped
-        return original_roi
-
     def find_optimal_crop(self, binary):
         """Optionally crop the barcode with minimal padding."""
         if self.cropped_flag:
@@ -646,21 +501,37 @@ class Pipeline1(PipelineBase):
         return binary[y : y + h, x : x + w]
 
     def final_cleanup(self, binary):
-        """More conservative final cleanup that preserves thin bars."""
-        min_bar_width, _ = self.estimate_bar_thickness(binary)
-        min_bar_width = max(1, min(min_bar_width, 5))  # Limit max width
-        
-        kernel = np.ones((binary.shape[0], min_bar_width)) / binary.shape[0]
+        rows, cols = binary.shape
         cleaned = np.zeros_like(binary)
-        
-        for i in range(binary.shape[1] - min_bar_width + 1):
-            region = binary[:, i:i+min_bar_width]
-            vertical_avg = np.mean(region, axis=0)
-            # Higher threshold to prevent black image
-            cleaned[:, i:i+min_bar_width] = (vertical_avg > 150).astype(np.uint8) * 255
-            
+        for i in range(cols):
+            col = binary[:, i]
+            cleaned[:, i] = (np.mean(col) > 127) * 255
         return cleaned
-    
+
+    def _projection_based_crop(self, binary_image, original_roi):
+        """Crop the barcode region based on projections."""
+        vertical_projection = np.sum(binary_image == 0, axis=0)
+        horizontal_projection = np.sum(binary_image == 0, axis=1)
+
+        vertical_threshold = 0.6 * np.max(vertical_projection)
+        horizontal_threshold = 0.6 * np.max(horizontal_projection)
+
+        vertical_indices = np.where(vertical_projection > vertical_threshold)[0]
+        horizontal_indices = np.where(horizontal_projection > horizontal_threshold)[0]
+
+        if len(vertical_indices) > 0 and len(horizontal_indices) > 0:
+            x_start, x_end = vertical_indices[0], vertical_indices[-1]
+            y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
+            padding_x = int(0.05 * (x_end - x_start))
+            padding_y = int(0.05 * (y_end - y_start))
+            x_start = max(0, x_start - padding_x)
+            x_end = min(original_roi.shape[1], x_end + padding_x)
+            y_start = max(0, y_start - padding_y)
+            y_end = min(original_roi.shape[0], y_end + padding_y)
+            cropped = original_roi[y_start:y_end, x_start:x_end]
+            return cropped
+        return original_roi
+
     def process(self, image: np.ndarray) -> np.ndarray:
         """Run the pipeline on an image."""
         self.steps = []
@@ -721,164 +592,157 @@ class Pipeline1(PipelineBase):
         self.add_step("Final Cleanup", final)
 
         return final
- 
-# -------------------------------------
-# Updated Pipeline2
-# -------------------------------------
+
 class Pipeline2(PipelineBase):
-    """Morphological approach with improved contrast handling."""
-    def detect_and_log_problems(self, image: np.ndarray) -> Tuple[List[str], Optional[Tuple[int, int, int, int]]]:
+    """Enhanced Pipeline2 incorporating Mark's rotation and contrast handling"""
+    def __init__(self):
+        super().__init__()
+        self.min_bar_width = None
+        self.pattern_width = None
+
+    def detect_and_log_problems(
+        self, image: np.ndarray
+    ) -> Tuple[List[str], Optional[Tuple[int, int, int, int]]]:
         try:
-            region = detect_barcode_region(image)
-            if region is None:
-                return [], None
-
-            x, y, w, h = region
-            roi = image[y:y+h, x:x+w]
             problems = []
+            
+            # Convert to HSV for color detection
+            if len(image.shape) == 3:
+                img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+                # Define ranges for black, gray, white
+                lower_black = np.array([0, 0, 0])
+                upper_black = np.array([180, 255, 50])
+                lower_gray = np.array([0, 0, 50])
+                upper_gray = np.array([180, 50, 200])
+                lower_white = np.array([0, 0, 200])
+                upper_white = np.array([180, 50, 255])
+                
+                # Create and combine masks
+                black_mask = cv2.inRange(img_hsv, lower_black, upper_black)
+                gray_mask = cv2.inRange(img_hsv, lower_gray, upper_gray)
+                white_mask = cv2.inRange(img_hsv, lower_white, upper_white)
+                combined_mask = cv2.bitwise_or(black_mask, cv2.bitwise_or(gray_mask, white_mask))
+                non_gray_mask = cv2.bitwise_not(combined_mask)
+                
+                if non_gray_mask.any():
+                    problems.append('color_noise')
 
-            # Structure analysis using gradients
-            kernel = np.ones((3, 3), np.uint8)
-            gradient = cv2.morphologyEx(roi, cv2.MORPH_GRADIENT, kernel)
-            if np.mean(gradient) < 20:
-                problems.append('structure')
-
-            # Noise detection
-            tophat = cv2.morphologyEx(roi, cv2.MORPH_TOPHAT, kernel)
-            if np.mean(tophat) > 30:
-                problems.append('noise')
-
-            # Additional problem detection
-            p5, p95 = np.percentile(roi, [5, 95])
-            if (p95 - p5) < 80:
-                problems.append('low_contrast')
-
-            laplacian_var = cv2.Laplacian(roi, cv2.CV_64F).var()
-            if laplacian_var < 100:
-                problems.append('blur')
-
-            return problems, region
+            # Detect rotation using Mark's approach
+            edges = cv2.Canny(image, 100, 200)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+            closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+            contours, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if contours:
+                largest = max(contours, key=cv2.contourArea)
+                rect = cv2.minAreaRect(largest)
+                if abs(rect[-1]) > 5:
+                    problems.append('rotation')
+                box = cv2.boxPoints(rect)
+                box = np.int32(box)
+                x, y, w, h = cv2.boundingRect(box)
+                return problems, (x, y, w, h)
+            
+            return problems, None
 
         except Exception as e:
             logger.error(f"Error in Pipeline2 problem detection: {str(e)}")
             return [], None
 
-    def _process_morphology(self, image: np.ndarray) -> np.ndarray:
-        """Enhanced morphological operations."""
-        try:
-            kernel = np.ones((3, 3), np.uint8)
+    def fix_rotation(self, image: np.ndarray) -> np.ndarray:
+        """Improved rotation fix using Mark's approach"""
+        edges = cv2.Canny(image, 100, 200)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            rect = cv2.minAreaRect(largest)
+            box = cv2.boxPoints(rect)
+            box = np.int32(box)
             
-            # First stage: Remove noise
-            opened = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+            # Get width and height
+            width = int(rect[1][0])
+            height = int(rect[1][1])
             
-            # Second stage: Fill small gaps
-            closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+            # Define destination points
+            dst_points = np.array([
+                [0, height - 1],
+                [0, 0],
+                [width - 1, 0],
+                [width - 1, height - 1]
+            ], dtype="float32")
             
-            # Third stage: Enhance vertical lines
-            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
-            vertical_enhanced = cv2.morphologyEx(closed, cv2.MORPH_DILATE, vertical_kernel)
+            # Get perspective transform
+            M = cv2.getPerspectiveTransform(box.astype("float32"), dst_points)
+            warped = cv2.warpPerspective(image, M, (width, height))
             
-            return vertical_enhanced
-        except Exception as e:
-            logger.error(f"Error in morphological operations: {str(e)}")
-            return image
-
-    def fix_blur(self, image: np.ndarray) -> np.ndarray:
-        """Gentler blur correction to preserve thin lines."""
-        gaussian = cv2.GaussianBlur(image, (0, 0), 0.5)  # Reduced sigma
-        unsharp = cv2.addWeighted(image, 1.3, gaussian, -0.3, 0)  # Gentler weights
-        return unsharp
-
-    def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
-        try:
-            clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))  # Reduced clip limit
-            enhanced = clahe.apply(image)
+            # Check if rotation needed
+            if width < height:
+                warped = cv2.rotate(warped, cv2.ROTATE_90_CLOCKWISE)
             
-            # Adaptive gamma correction
-            mean_intensity = np.mean(enhanced)
-            if mean_intensity < 128:
-                gamma = 1.1  # Slightly brighten dark images
-            else:
-                gamma = 0.9  # Slightly darken bright images
-            inv_gamma = 1.0 / gamma
-            table = np.array([((i/255.0)**inv_gamma)*255 for i in range(256)]).astype(np.uint8)
-            gamma_corrected = cv2.LUT(enhanced, table)
-            
-            return gamma_corrected
-        except Exception as e:
-            logger.error(f"Error in contrast enhancement: {str(e)}")
-            return image
+            return warped
+        return image
 
     def process(self, image: np.ndarray) -> np.ndarray:
-        try:
-            self.steps = []
-            self.add_step("Original Image", image)
+        """Enhanced processing pipeline"""
+        self.steps = []
+        self.add_step("Original Image", image)
 
-            gray = self.preprocess_grayscale(image)
-            probs, region = self.detect_and_log_problems(gray)
-            self.add_step("Detected Problems: " + ", ".join(probs), gray)
+        # Initial preprocessing
+        gray = self.preprocess_grayscale(image)
+        problems, region = self.detect_and_log_problems(gray)
+        self.add_step("Detected Problems: " + ", ".join(problems), gray)
 
-            if region is None:
-                return gray
+        processed = gray.copy()
 
-            x, y, w, h = region
-            roi = gray[y:y+h, x:x+w]
+        # Fix rotation if needed
+        if 'rotation' in problems:
+            processed = self.fix_rotation(processed)
+            self.add_step("Fixed Rotation", processed)
 
-            # Process in optimal order
-            processed = self._process_morphology(roi)
-            self.add_step("Morphological Processing", processed)
+        # Handle color noise
+        if 'color_noise' in problems:
+            # Apply adaptive thresholding
+            processed = cv2.adaptiveThreshold(
+                processed, 255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 11, 2
+            )
+            self.add_step("Removed Color Noise", processed)
 
-            if 'blur' in probs:
-                processed = self.fix_blur(processed)
-                self.add_step("Sharpened", processed)
+        # Apply vertical morphology
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 7))
+        processed = cv2.erode(processed, kernel, iterations=3)
+        processed = cv2.dilate(processed, kernel, iterations=3)
+        self.add_step("Vertical Morphology", processed)
 
-            if 'low_contrast' in probs:
-                processed = self._enhance_contrast(processed)
-                self.add_step("Enhanced Contrast", processed)
+        # Final cleanup
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1000))
+        processed = cv2.dilate(processed, kernel, iterations=3)
+        self.add_step("Final Cleanup", processed)
 
-            # Check and correct inversion
-            if np.mean(processed) > 127:
-                processed = 255 - processed
-                self.add_step("Inversion Corrected", processed)
+        return processed
 
-            result = gray.copy()
-            result[y:y+h, x:x+w] = processed
-            return result
-
-        except Exception as e:
-            logger.error(f"Error in Pipeline2 process: {str(e)}")
-            return image
-
-# -------------------------------------
-# Updated Pipeline3
-# -------------------------------------
 class Pipeline3(PipelineBase):
-    """Frequency domain approach with improved pattern enhancement."""
-    def detect_and_log_problems(self, image: np.ndarray) -> Tuple[List[str], Optional[Tuple[int, int, int, int]]]:
+    """Enhanced Pipeline3 focusing on salt & pepper and cropping improvements"""
+    def detect_and_log_problems(
+        self, image: np.ndarray
+    ) -> Tuple[List[str], Optional[Tuple[int, int, int, int]]]:
         try:
+            problems = []
+            
+            # Detect salt & pepper noise
+            median = cv2.medianBlur(image, 3)
+            diff = np.abs(image - median)
+            if np.percentile(diff, 95) > 30:
+                problems.append('salt_pepper')
+
+            # Get barcode region
             region = detect_barcode_region(image)
             if region is None:
-                return [], None
-
-            x, y, w, h = region
-            roi = image[y:y+h, x:x+w]
-            problems = []
-
-            # Frequency domain analysis
-            f_transform = np.fft.fft2(roi)
-            f_shift = np.fft.fftshift(f_transform)
-            magnitude_spectrum = 20 * np.log(np.abs(f_shift) + 1)
-
-            # Look for high-frequency noise
-            high_freq = magnitude_spectrum[magnitude_spectrum.shape[0]//4:3*magnitude_spectrum.shape[0]//4,
-                                        magnitude_spectrum.shape[1]//4:3*magnitude_spectrum.shape[1]//4]
-            if np.std(high_freq) > 45:
-                problems.append('frequency_domain')
-
-            # Check for periodic noise
-            periodic_pattern = np.sum(magnitude_spectrum > 150)
-            if periodic_pattern > magnitude_spectrum.size * 0.01:
-                problems.append('periodic_noise')
+                return problems, None
 
             return problems, region
 
@@ -886,37 +750,44 @@ class Pipeline3(PipelineBase):
             logger.error(f"Error in Pipeline3 problem detection: {str(e)}")
             return [], None
 
-    def _fix_frequency_domain(self, image: np.ndarray) -> np.ndarray:
-        try:
-            f_transform = np.fft.fft2(image)
-            f_shift = np.fft.fftshift(f_transform)
-            rows, cols = image.shape
-            crow, ccol = rows // 2, cols // 2
+    def _projection_based_crop(self, binary_image: np.ndarray, original_roi: np.ndarray) -> np.ndarray:
+        """Improved cropping mechanism from codebase 1A"""
+        vertical_projection = np.sum(binary_image == 0, axis=0)
+        horizontal_projection = np.sum(binary_image == 0, axis=1)
 
-            # Create butterworth high-pass filter
-            d0 = 30  # Cutoff frequency
-            n = 2    # Order of the filter
-            u = np.arange(rows)
-            v = np.arange(cols)
-            u, v = np.meshgrid(u-crow, v-ccol)
-            d = np.sqrt(u*u + v*v)
-            h = 1 / (1 + (d0/d)**(2*n))
-            h = np.fft.fftshift(h)
+        vertical_threshold = 0.6 * np.max(vertical_projection)
+        horizontal_threshold = 0.6 * np.max(horizontal_projection)
 
-            # Apply filter
-            f_shift_filtered = f_shift * h
-            f_ishift = np.fft.ifftshift(f_shift_filtered)
-            img_back = np.fft.ifft2(f_ishift)
-            img_back = np.abs(img_back)
+        vertical_indices = np.where(vertical_projection > vertical_threshold)[0]
+        horizontal_indices = np.where(horizontal_projection > horizontal_threshold)[0]
 
-            # Normalize and enhance contrast
-            img_norm = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            return clahe.apply(img_norm)
+        if len(vertical_indices) > 0 and len(horizontal_indices) > 0:
+            x_start, x_end = vertical_indices[0], vertical_indices[-1]
+            y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
+            padding_x = int(0.05 * (x_end - x_start))
+            padding_y = int(0.05 * (y_end - y_start))
+            x_start = max(0, x_start - padding_x)
+            x_end = min(original_roi.shape[1], x_end + padding_x)
+            y_start = max(0, y_start - padding_y)
+            y_end = min(original_roi.shape[0], y_end + padding_y)
+            cropped = original_roi[y_start:y_end, x_start:x_end]
+            return cropped
+        return original_roi
 
-        except Exception as e:
-            logger.error(f"Error in frequency domain fix: {str(e)}")
-            return image
+    def remove_salt_pepper(self, image: np.ndarray) -> np.ndarray:
+        """Enhanced salt & pepper removal"""
+        # Multiple pass median filtering
+        filtered = cv2.medianBlur(image, 3)
+        filtered = cv2.medianBlur(filtered, 3)
+        
+        # Adaptive thresholding to preserve features
+        binary = cv2.adaptiveThreshold(
+            filtered, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
+        
+        return binary
 
     def process(self, image: np.ndarray) -> np.ndarray:
         try:
@@ -924,39 +795,37 @@ class Pipeline3(PipelineBase):
             self.add_step("Original Image", image)
 
             gray = self.preprocess_grayscale(image)
-            probs, region = self.detect_and_log_problems(gray)
-            self.add_step("Detected Problems: " + ", ".join(probs), gray)
+            problems, region = self.detect_and_log_problems(gray)
+            self.add_step("Detected Problems: " + ", ".join(problems), gray)
 
-            if region is None:
-                return gray
+            processed = gray.copy()
 
-            x, y, w, h = region
-            roi = gray[y:y+h, x:x+w]
+            if 'salt_pepper' in problems:
+                processed = self.remove_salt_pepper(processed)
+                self.add_step("Removed Salt & Pepper", processed)
+                
+                # Apply projection-based cropping after noise removal
+                processed = self._projection_based_crop(processed, processed)
+                self.add_step("Applied Projection Cropping", processed)
 
-            processed = roi.copy()
-            if 'frequency_domain' in probs or 'periodic_noise' in probs:
-                processed = self._fix_frequency_domain(roi)
-                self.add_step("Frequency Domain Processing", processed)
+            # Final enhancements
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            processed = cv2.morphologyEx(processed, cv2.MORPH_CLOSE, kernel)
+            self.add_step("Final Enhancement", processed)
 
-            # Check and correct inversion
-            if np.mean(processed) > 127:
-                processed = 255 - processed
-                self.add_step("Inversion Corrected", processed)
-
-            result = gray.copy()
-            result[y:y+h, x:x+w] = processed
-            return result
+            return processed
 
         except Exception as e:
             logger.error(f"Error in Pipeline3 process: {str(e)}")
             return image
- 
- 
-# -------------------------------------
-# Updated BarcodeProcessor Manager
-# -------------------------------------
+
+
+
+# -------------------------------------------------------------------
+# Multi-Pipeline Manager
+# -------------------------------------------------------------------
 class BarcodeProcessor:
-    """Enhanced manager class for running and evaluating multiple pipelines."""
+    """Manager class for running and evaluating multiple pipelines."""
 
     def __init__(self):
         self.pipeline1 = Pipeline1()
@@ -966,75 +835,11 @@ class BarcodeProcessor:
         self.best_result: Optional[PipelineResult] = None
         self.original_image: Optional[np.ndarray] = None
 
-    def evaluate_pipeline_result(self, result: np.ndarray, name: str) -> Tuple[float, dict]:
-        """Enhanced pipeline result evaluation."""
-        if result is None:
-            return 0.0, {}
-
-        # Edge quality (40%)
-        edges = cv2.Canny(result, 50, 150)
-        edge_density = np.mean(edges > 0)
-        edge_coherence = cv2.Laplacian(result, cv2.CV_64F).var()
-        edge_score = edge_density * 100 + edge_coherence * 0.1
-
-        # Contrast quality (30%)
-        p5, p95 = np.percentile(result, [5, 95])
-        mean_intensity = np.mean(result)
-        contrast_score = p95 - p5
-
-        # Pattern quality (20%)
-        sobelx = cv2.Sobel(result, cv2.CV_64F, 1, 0, ksize=3)
-        sobely = cv2.Sobel(result, cv2.CV_64F, 0, 1, ksize=3)
-        pattern_score = np.mean(np.abs(sobelx)) / (np.mean(np.abs(sobely)) + 1e-6)
-
-        # Noise quality (10%)
-        blurred = cv2.GaussianBlur(result, (3, 3), 0)
-        noise = np.abs(result.astype(float) - blurred.astype(float))
-        noise_score = 255 - np.mean(noise)
-
-        # Calculate base score
-        metrics = {
-            'edge_score': edge_score,
-            'contrast_score': contrast_score,
-            'pattern_score': pattern_score,
-            'noise_score': noise_score,
-            'mean_intensity': mean_intensity
-        }
-
-        # Base score calculation
-        score = (
-            edge_score * 0.4 +
-            contrast_score * 0.3 +
-            pattern_score * 0.2 +
-            noise_score * 0.1
-        )
-
-        # Apply bonuses/penalties based on known issues
-        if pattern_score > 2.0:  # Strong barcode pattern
-            score *= 1.2
-            metrics['pattern_bonus'] = True
-
-        if 30 < mean_intensity < 225:  # Not too dark or bright
-            score *= 1.1
-            metrics['intensity_bonus'] = True
-
-        if name == "Pipeline 1" and 'salt_pepper' in self.pipeline1.problems:
-            if np.std(result) > 20:  # Still has good contrast
-                score *= 1.15  # Bonus for Pipeline 1 handling salt & pepper
-                metrics['salt_pepper_bonus'] = True
-
-        if mean_intensity < 30 and contrast_score > 100:  # Dark but still readable
-            score *= 1.2
-            metrics['dark_contrast_bonus'] = True
-
-        return score, metrics
-
     def process(self, image: np.ndarray) -> np.ndarray:
-        """Process image through all pipelines with improved selection."""
+        """Process image through all pipelines and pick best result."""
         try:
             self.original_image = image.copy()
             self.all_results = []
-            logger.info("Starting barcode processing...")
 
             # Run each pipeline
             for pipeline, name in [
@@ -1049,10 +854,15 @@ class BarcodeProcessor:
                     else image.copy()
                 )
                 result = pipeline.process(gray_image)
-                score, metrics = self.evaluate_pipeline_result(result, name)
+                score, metrics = BarcodeImageQuality.evaluate_quality(result)
+
+                # Updated quality evaluation with inversion penalty
+                if result is not None:
+                    if np.mean(result) > 127:  # Check for inversion
+                        score *= 0.7  # Apply penalty, adjust as needed
+
                 logger.info(f"{name} completed with score: {score:.2f}")
 
-                # Create result object
                 p_result = PipelineResult(
                     name=name,
                     quality_score=score,
@@ -1066,27 +876,7 @@ class BarcodeProcessor:
                 logger.warning("No pipeline produced results")
                 return image
 
-            # Enhanced winner selection logic
-            weighted_results = []
-            for result in self.all_results:
-                weight = 1.0
-                metrics = result.metrics
-                
-                # Additional weighting factors
-                if metrics.get('pattern_bonus'):
-                    weight *= 1.2
-                if metrics.get('intensity_bonus'):
-                    weight *= 1.1
-                if metrics.get('salt_pepper_bonus'):
-                    weight *= 1.15
-                if metrics.get('dark_contrast_bonus'):
-                    weight *= 1.2
-                
-                weighted_results.append((result, result.quality_score * weight))
-
-            # Select best result based on weighted scores
-            self.best_result = max(weighted_results, key=lambda x: x[1])[0]
-            
+            self.best_result = max(self.all_results, key=lambda x: x.quality_score)
             logger.info(
                 f"Best result: {self.best_result.name} "
                 f"(score: {self.best_result.quality_score:.2f})"
@@ -1098,94 +888,85 @@ class BarcodeProcessor:
             return image
 
     def visualize_all_results(self):
-        """Enhanced visualization of pipeline results."""
+        """Visualize pipeline steps & final results."""
         try:
             if not self.all_results or self.original_image is None:
                 logger.warning("No results to visualize")
                 return
 
-            # Setup plot
             max_steps = max(len(r.steps) for r in self.all_results)
-            rows = 5  # Original, P1, P2, P3, Winner
+            rows = 5  # (Row0: Original, Row1: P1, Row2: P2, Row3: P3, Row4: Winner)
             cols = max_steps
+
             fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
 
-            # Row 0: Original
+            # Row 0 => Original
             axes[0, 0].imshow(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB))
             axes[0, 0].set_title("Original Image")
             axes[0, 0].axis('off')
             for c in range(1, cols):
                 axes[0, c].axis('off')
 
-            # Rows 1-3: Pipeline results
-            for row_idx, result in enumerate(self.all_results, start=1):
-                # Show processing steps
-                for step_idx, (desc, step_img) in enumerate(result.steps):
-                    if step_idx < cols:
-                        ax = axes[row_idx, step_idx]
+            # Rows 1..3 => Pipelines
+            for row_index, result in enumerate(self.all_results, start=1):
+                # Show steps
+                for step_index, (desc, step_img) in enumerate(result.steps):
+                    col_index = step_index
+                    if col_index < cols:
+                        ax = axes[row_index, col_index]
                         ax.imshow(step_img, cmap='gray')
-                        ax.set_title(f"{desc}\nScore: {result.metrics.get(desc.lower().replace(' ','_')+'_score', ''):.1f}",
-                                   fontsize=8)
+                        ax.set_title(f"Step {step_index+1}: {desc}", fontsize=8)
                         ax.axis('off')
 
-                # Hide unused columns
-                for col_idx in range(len(result.steps), cols):
-                    axes[row_idx, col_idx].axis('off')
+                # Pad remaining columns
+                for col_index in range(len(result.steps), cols):
+                    axes[row_index, col_index].axis('off')
 
-            # Row 4: Winner with metrics
+                # Also show final result in column 0
+                ax_final = axes[row_index, 0]
+                ax_final.imshow(result.processed_image, cmap='gray')
+                ax_final.set_title(f"{result.name} (Final)", fontsize=9)
+                ax_final.axis('off')
+
+            # Row 4 => Winner
             if self.best_result:
                 axes[4, 0].imshow(self.best_result.processed_image, cmap='gray')
-                winner_title = (
+                axes[4, 0].set_title(
                     f"Winner: {self.best_result.name}\n"
-                    f"Score: {self.best_result.quality_score:.2f}\n"
-                    f"Edge: {self.best_result.metrics['edge_score']:.1f}, "
-                    f"Contrast: {self.best_result.metrics['contrast_score']:.1f}"
+                    f"Score: {self.best_result.quality_score:.2f}"
                 )
-                axes[4, 0].set_title(winner_title, fontsize=9)
                 axes[4, 0].axis('off')
 
                 for c in range(1, cols):
+                    axes[4, c].axis('off')
+            else:
+                for c in range(cols):
                     axes[4, c].axis('off')
 
             plt.tight_layout()
             plt.savefig("pipeline_comparison.png", dpi=300, bbox_inches='tight')
             plt.close()
-            logger.info("Results visualization saved as 'pipeline_comparison.png'")
+            logger.info("Results saved to pipeline_comparison.png")
 
         except Exception as e:
             logger.error(f"Error in visualization: {str(e)}")
 
-# -------------------------------------
+# -------------------------------------------------------------------
 # Main Execution
-# -------------------------------------
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    try:
-        processor = BarcodeProcessor()
-        image_path = filedialog.askopenfilename(
-            title="Select a Barcode Image",
-            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")]
-        )
-        
-        if not image_path:
-            print("No image selected. Exiting...")
-            exit(0)
-            
+    processor = BarcodeProcessor()
+    image_path = filedialog.askopenfilename(
+        title="Select an Image",
+        filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")]
+    )
+    if image_path:
         image = cv2.imread(image_path)
-        if image is None:
-            print(f"Failed to load image: {image_path}")
-            exit(1)
-            
-        print("Processing image...")
-        processed_image = processor.process(image)
-        processor.visualize_all_results()
-        
-        # Save the final processed image
-        output_path = "processed_barcode.png"
-        cv2.imwrite(output_path, processed_image)
-        print(f"\nProcessing complete!")
-        print(f"Results visualization saved as 'pipeline_comparison.png'")
-        print(f"Processed barcode saved as '{output_path}'")
-        
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        logger.error(f"Error in main execution: {str(e)}")
+        if image is not None:
+            processed_image = processor.process(image)
+            processor.visualize_all_results()
+            print("\nVisualization saved as 'pipeline_comparison.png'")
+        else:
+            print("Failed to load image.")
+    else:
+        print("No image selected.")
