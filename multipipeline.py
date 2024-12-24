@@ -721,11 +721,7 @@ class Pipeline1(PipelineBase):
         self.add_step("Final Cleanup", final)
 
         return final
-#-------------------------------------------------------------------
-#Pipeline 2: Morphological Approach + Pipeline 1 Improvements
-#-------------------------------------------------------------------
-"""Updates for Pipeline2 and Pipeline3."""
-
+ 
 # -------------------------------------
 # Updated Pipeline2
 # -------------------------------------
@@ -954,140 +950,8 @@ class Pipeline3(PipelineBase):
         except Exception as e:
             logger.error(f"Error in Pipeline3 process: {str(e)}")
             return image
-#-------------------------------------------------------------------
-#Multi-Pipeline Manager
-#-------------------------------------------------------------------
-class BarcodeProcessor:
-    """Manager class for running and evaluating multiple pipelines."""
-    def __init__(self):
-        self.pipeline1 = Pipeline1()
-        self.pipeline2 = Pipeline2()
-        self.pipeline3 = Pipeline3()
-        self.all_results: List[PipelineResult] = []
-        self.best_result: Optional[PipelineResult] = None
-        self.original_image: Optional[np.ndarray] = None
-
-    def process(self, image: np.ndarray) -> np.ndarray:
-        """Process image through all pipelines and pick best result."""
-        try:
-            self.original_image = image.copy()
-            self.all_results = []
-
-            # Run each pipeline
-            for pipeline, name in [
-                (self.pipeline1, "Pipeline 1"),
-                (self.pipeline2, "Pipeline 2"),
-                (self.pipeline3, "Pipeline 3"),
-            ]:
-                logger.info(f"Running {name}...")
-                gray_image = (
-                    cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
-                    if len(image.shape) > 2
-                    else image.copy()
-                )
-                result = pipeline.process(gray_image)
-                score, metrics = BarcodeImageQuality.evaluate_quality(result)
-
-                # Updated quality evaluation with inversion penalty
-                if result is not None:
-                    if np.mean(result) > 127:  # Check for inversion
-                        score *= 0.7  # Apply penalty, adjust as needed
-
-                logger.info(f"{name} completed with score: {score:.2f}")
-
-                p_result = PipelineResult(
-                    name=name,
-                    quality_score=score,
-                    processed_image=result,
-                    steps=pipeline.steps,
-                    metrics=metrics,
-                )
-                self.all_results.append(p_result)
-
-            if not self.all_results:
-                logger.warning("No pipeline produced results")
-                return image
-
-            self.best_result = max(self.all_results, key=lambda x: x.quality_score)
-            logger.info(
-                f"Best result: {self.best_result.name} "
-                f"(score: {self.best_result.quality_score:.2f})"
-            )
-            return self.best_result.processed_image
-
-        except Exception as e:
-            logger.error(f"Error in main processing: {str(e)}")
-            return image
-
-    def visualize_all_results(self):
-        """Visualize pipeline steps & final results."""
-        try:
-            if not self.all_results or self.original_image is None:
-                logger.warning("No results to visualize")
-                return
-
-            max_steps = max(len(r.steps) for r in self.all_results)
-            rows = 5  # (Row0: Original, Row1: P1, Row2: P2, Row3: P3, Row4: Winner)
-            cols = max_steps
-
-            fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
-
-            # Row 0 => Original
-            axes[0, 0].imshow(cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB))
-            axes[0, 0].set_title("Original Image")
-            axes[0, 0].axis('off')
-            for c in range(1, cols):
-                axes[0, c].axis('off')
-
-            # Rows 1..3 => Pipelines
-            for row_index, result in enumerate(self.all_results, start=1):
-                # Show steps
-                for step_index, (desc, step_img) in enumerate(result.steps):
-                    col_index = step_index
-                    if col_index < cols:
-                        ax = axes[row_index, col_index]
-                        ax.imshow(step_img, cmap='gray')
-                        ax.set_title(f"Step {step_index+1}: {desc}", fontsize=8)
-                        ax.axis('off')
-
-                # Pad remaining columns
-                for col_index in range(len(result.steps), cols):
-                    axes[row_index, col_index].axis('off')
-
-                # Also show final result in column 0
-                ax_final = axes[row_index, 0]
-                ax_final.imshow(result.processed_image, cmap='gray')
-                ax_final.set_title(f"{result.name} (Final)", fontsize=9)
-                ax_final.axis('off')
-
-            # Row 4 => Winner
-            if self.best_result:
-                axes[4, 0].imshow(self.best_result.processed_image, cmap='gray')
-                axes[4, 0].set_title(
-                    f"Winner: {self.best_result.name}\n"
-                    f"Score: {self.best_result.quality_score:.2f}"
-                )
-                axes[4, 0].axis('off')
-
-                for c in range(1, cols):
-                    axes[4, c].axis('off')
-            else:
-                for c in range(cols):
-                    axes[4, c].axis('off')
-
-            plt.tight_layout()
-            plt.savefig("pipeline_comparison.png", dpi=300, bbox_inches='tight')
-            plt.close()
-            logger.info("Results saved to pipeline_comparison.png")
-
-        except Exception as e:
-            logger.error(f"Error in visualization: {str(e)}")
-
-#-------------------------------------------------------------------
-#Main Execution
-#-------------------------------------------------------------------
-"""Final Updates: BarcodeProcessor Manager and Main."""
-
+ 
+ 
 # -------------------------------------
 # Updated BarcodeProcessor Manager
 # -------------------------------------
