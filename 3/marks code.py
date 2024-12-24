@@ -1,3 +1,5 @@
+Note that this code implements diffreent architecture it uses single piepline while i use 3 , so you can use this code and adjust one of my pipelines to make it work like this , either 2 or 3 don't change 1, also make sure to anlayze the test cases and order of operaation for this code we will call it codebase Mark's code
+----------------
 import os
 from typing import Any
 
@@ -250,7 +252,8 @@ if not os.path.exists(OUTPUT_DIR):
 
 # Process all test images
 extract_barcodes(IMAGES_DIR, OUTPUT_DIR)
-
+-------------
+testcase results
 # Foreign object covering part of barcode:  
 # perfect
 

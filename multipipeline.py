@@ -34,7 +34,6 @@ class PipelineResult:
     steps: List[Tuple[str, np.ndarray]]
     metrics: dict
 
-
 class BarcodeImageQuality:
     """Class to evaluate barcode image quality."""
     @staticmethod
@@ -81,7 +80,6 @@ class BarcodeImageQuality:
 
         return total_score, metrics
 
-
 # -------------------------------------------------------------------
 # Common Utility Functions
 # -------------------------------------------------------------------
@@ -113,7 +111,6 @@ def estimate_bar_thickness(image: np.ndarray) -> Tuple[int, int]:
         logger.error(f"Error in estimate_bar_thickness: {str(e)}")
         return 3, 9
 
-
 def get_anomalous_regions(anomalies: np.ndarray, bar_thickness: int) -> List[List[int]]:
     """Group contiguous anomalous column indices into regions."""
     regions = []
@@ -134,7 +131,6 @@ def get_anomalous_regions(anomalies: np.ndarray, bar_thickness: int) -> List[Lis
     except Exception as e:
         logger.error(f"Error in get_anomalous_regions: {str(e)}")
     return regions
-
 
 def detect_barcode_region(
     image: np.ndarray, min_region_size: int = 10
@@ -172,7 +168,6 @@ def detect_barcode_region(
         logger.error(f"Error in detect_barcode_region: {str(e)}")
         return None
 
-
 # -------------------------------------------------------------------
 # Pipeline Base Class
 # -------------------------------------------------------------------
@@ -209,7 +204,6 @@ class PipelineBase:
     ) -> Tuple[List[str], Optional[Tuple[int, int, int, int]]]:
         """Detect problems in the image. Must be overridden by subclasses."""
         raise NotImplementedError
-
 
 # -------------------------------------------------------------------
 # Pipeline 1: Pattern-Based Approach
@@ -502,6 +496,30 @@ class Pipeline1(PipelineBase):
             cleaned[:, i] = (np.mean(col) > 127) * 255
         return cleaned
 
+    def _projection_based_crop(self, binary_image, original_roi):
+        """Crop the barcode region based on projections."""
+        vertical_projection = np.sum(binary_image == 0, axis=0)
+        horizontal_projection = np.sum(binary_image == 0, axis=1)
+
+        vertical_threshold = 0.6 * np.max(vertical_projection)
+        horizontal_threshold = 0.6 * np.max(horizontal_projection)
+
+        vertical_indices = np.where(vertical_projection > vertical_threshold)[0]
+        horizontal_indices = np.where(horizontal_projection > horizontal_threshold)[0]
+
+        if len(vertical_indices) > 0 and len(horizontal_indices) > 0:
+            x_start, x_end = vertical_indices[0], vertical_indices[-1]
+            y_start, y_end = horizontal_indices[0], horizontal_indices[-1]
+            padding_x = int(0.05 * (x_end - x_start))
+            padding_y = int(0.05 * (y_end - y_start))
+            x_start = max(0, x_start - padding_x)
+            x_end = min(original_roi.shape[1], x_end + padding_x)
+            y_start = max(0, y_start - padding_y)
+            y_end = min(original_roi.shape[0], y_end + padding_y)
+            cropped = original_roi[y_start:y_end, x_start:x_end]
+            return cropped
+        return original_roi
+
     def process(self, image: np.ndarray) -> np.ndarray:
         """Run the pipeline on an image."""
         self.steps = []
@@ -534,6 +552,11 @@ class Pipeline1(PipelineBase):
         if 'salt_pepper' in problems:
             roi = self.remove_salt_pepper(roi, (0, 0, w, h))
             self.add_step("Removed Salt & Pepper", roi)
+            # Apply projection-based cropping after salt & pepper removal
+            binary_roi = self.binarize(roi)
+            cropped_roi = self._projection_based_crop(binary_roi, roi)
+            self.add_step("Cropped (Projection)", cropped_roi)
+            roi = cropped_roi
 
         if 'frequency_domain' in problems:
             roi = self.fix_frequency_domain(roi, (0, 0, w, h))
@@ -557,7 +580,6 @@ class Pipeline1(PipelineBase):
         self.add_step("Final Cleanup", final)
 
         return final
-
 
 # -------------------------------------------------------------------
 # Pipeline 2: Morphological Approach
@@ -602,8 +624,8 @@ class Pipeline2(PipelineBase):
 
     def fix_blur(self, image: np.ndarray) -> np.ndarray:
         """Apply mild unsharp mask for slight blur correction."""
-        gaussian = cv2.GaussianBlur(image, (0, 0), 1)
-        unsharp = cv2.addWeighted(image, 1.3, gaussian, -0.3, 0)
+        gaussian = cv2.GaussianBlur(image, (0, 0), 0.5)  # Reduced sigma for milder blur
+        unsharp = cv2.addWeighted(image, 1.5, gaussian, -0.5, 0)  # Adjusted weights
         return unsharp
 
     def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
@@ -616,7 +638,7 @@ class Pipeline2(PipelineBase):
 
     def crop_to_barcode(self, image: np.ndarray, barcode_region: Tuple[int, int, int, int]) -> np.ndarray:
         x, y, w, h = barcode_region
-        roi = image[y : y + h, x : x + w].copy()
+        roi = image[y : y + h].copy()  # Apply crop to the whole image
 
         _, thresh = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -631,6 +653,13 @@ class Pipeline2(PipelineBase):
             bh = min(roi.shape[0] - by, bh + 2 * pad_y)
             roi = roi[by : by + bh, bx : bx + bw]
         return roi
+
+    def check_inversion(self, image: np.ndarray) -> np.ndarray:
+        """Check for and correct inversion."""
+        mean_brightness = np.mean(image)
+        if mean_brightness > 127:
+            return 255 - image
+        return image
 
     def process(self, image: np.ndarray) -> np.ndarray:
         try:
@@ -662,12 +691,16 @@ class Pipeline2(PipelineBase):
 
             result = gray.copy()
             result[y : y + h, x : x + w] = cropped
+
+            # Check for inversion and correct if needed
+            result = self.check_inversion(result)
+            self.add_step("Inversion Check", result)
+
             return result
 
         except Exception as e:
             logger.error(f"Error in Pipeline2 process: {str(e)}")
             return image
-
 
 # -------------------------------------------------------------------
 # Pipeline 3: Frequency-Domain Approach
@@ -764,7 +797,6 @@ class Pipeline3(PipelineBase):
             logger.error(f"Error in Pipeline3 process: {str(e)}")
             return image
 
-
 # -------------------------------------------------------------------
 # Multi-Pipeline Manager
 # -------------------------------------------------------------------
@@ -799,6 +831,12 @@ class BarcodeProcessor:
                 )
                 result = pipeline.process(gray_image)
                 score, metrics = BarcodeImageQuality.evaluate_quality(result)
+
+                # Updated quality evaluation with inversion penalty
+                if result is not None:
+                    if np.mean(result) > 127:  # Check for inversion
+                        score *= 0.7  # Apply penalty, adjust as needed
+
                 logger.info(f"{name} completed with score: {score:.2f}")
 
                 p_result = PipelineResult(
@@ -888,7 +926,6 @@ class BarcodeProcessor:
 
         except Exception as e:
             logger.error(f"Error in visualization: {str(e)}")
-
 
 # -------------------------------------------------------------------
 # Main Execution
