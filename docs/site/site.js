@@ -10,7 +10,7 @@ buttons.forEach(button => button.addEventListener('click', () => {
   const sample = cases[Number(button.dataset.index)];
   buttons.forEach(item => { const selected = item === button; item.classList.toggle('active', selected); item.setAttribute('aria-pressed', String(selected)); });
   const img = document.getElementById('sample-image');
-  img.src = `recovered/test-cases/${encodeURIComponent(sample.file)}`; img.alt = sample.alt;
+  img.src = `../../data/test-cases/${encodeURIComponent(sample.file)}`; img.alt = sample.alt;
   document.getElementById('sample-number').textContent = `CASE ${sample.number} / ORIGINAL IMAGE`;
   document.getElementById('sample-mark').textContent = sample.number;
   document.getElementById('sample-title').textContent = sample.title;

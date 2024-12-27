@@ -6,7 +6,7 @@ This Fall 2024 coursework investigated preprocessing and decoding Code 11 barcod
 
 ## Recovered pipeline
 
-The local benchmark executes `recovered/source/version89_variant.py`. This is one of two source snapshots recovered from the team's materials (the other is in `archive/recovered/`); the available evidence does not establish which one was the final version. The snapshots are preserved as supplied and should be read as historical experiments.
+The local benchmark executes `src/barcode_pipeline.py`. This is one of two source snapshots recovered from the team's materials (the other is in `archive/recovered/`); the available evidence does not establish which one was the final version. The snapshots are preserved as supplied and should be read as historical experiments.
 
 1. **Grayscale and noise heuristic.** `turnGrayscale` converts a color image into one channel. `detectSineWaveNoise` analyzes FFT magnitude peaks; if its heuristic reports periodic noise, the code applies adaptive thresholding. This heuristic is not a general guarantee of noise detection or removal.
 2. **Orientation.** `rotateBarcode` finds edges and contours, estimates orientation from the largest contour's minimum-area rectangle, and rotates the image. The estimate can fail when the largest contour is not the barcode.
@@ -26,7 +26,7 @@ A local run using Python 3.14 on the supplied test images produced matching payl
 
 ## Provenance and team
 
-The original repository preserved a series of earlier experiments. Two later `version89` files, the image archive, and the presentation script were recovered from materials supplied by the team. The variant used by the benchmark is in `recovered/source/`; the other snapshot and presentation script are in `archive/recovered/`. The 11 images have had metadata removed; their pixel content is retained. Reports containing student IDs were not added. The earlier experiments and output images have been organized into `archive/`, and paths assumed by old scripts may need adjustment.
+The original repository preserved a series of earlier experiments. Two later `version89` files, the image archive, and the presentation script were recovered from materials supplied by the team. The variant used by the benchmark is in `src/`; the other snapshot and presentation script are in `archive/recovered/`. The 11 images have had metadata removed; their pixel content is retained. Reports containing student IDs were not added. The earlier experiments and output images have been organized into `archive/`, and paths assumed by old scripts may need adjustment.
 
 The team members are Mohamed Hossam, Youssef Kassab, Monica Hany, and Patrick Ramez. The recovered project commit carries their co-author credits. The project materials identify Kassab with foreign-object and cropping snippets, but do not establish function-level authorship across the entire project.
 

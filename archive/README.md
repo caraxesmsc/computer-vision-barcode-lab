@@ -7,4 +7,4 @@ These files preserve earlier experiments and recovered material for reference. T
 - `outputs/` contains earlier generated visualizations.
 - `recovered/` contains the second recovered version 89 source snapshot and the team's presentation script. Neither is used by the current benchmark.
 
-For the runnable recovered variant, test images, and usage instructions, see the [main README](../README.md) and [technical documentation](../docs/PROJECT.md).
+For the runnable pipeline, test images, and usage instructions, see the [main README](../README.md) and [technical documentation](../docs/PROJECT.md).

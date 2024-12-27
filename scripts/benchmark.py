@@ -6,8 +6,8 @@ from pathlib import Path
 
 import cv2
 
-ROOT = Path(__file__).resolve().parent
-SOURCE = ROOT / 'source' / 'version89_variant.py'
+ROOT = Path(__file__).resolve().parent.parent
+SOURCE = ROOT / 'src' / 'barcode_pipeline.py'
 
 
 def expected_values():
@@ -23,7 +23,7 @@ def expected_values():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--images', type=Path, default=ROOT / 'test-cases')
+    parser.add_argument('--images', type=Path, default=ROOT / 'data' / 'test-cases')
     args = parser.parse_args()
     spec = importlib.util.spec_from_file_location('version89_variant', SOURCE)
     module = importlib.util.module_from_spec(spec)
